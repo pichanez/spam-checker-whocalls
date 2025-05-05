@@ -1,0 +1,33 @@
+version: "3.8"
+
+networks:
+  caddy:
+    external: true
+
+services:
+  api:
+    networks: [caddy]
+    expose: ["8000"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kaspersky-checker-api
+    env_file:
+      - .env
+    volumes:
+      # Монтируем каталог проекта внутрь контейнера для разработки
+      - ./:/app:delegated
+    restart: unless-stopped
+    environment:
+      # Передваем переменные окружения в контейнер
+      - API_KEY=${API_KEY}
+      - ADB_HOST=${ADB_HOST}
+      - ADB_PORT=${ADB_PORT}
+    labels:
+      caddy: telephony.visotsky.com
+      caddy.reverse_proxy: "{{upstreams 8000}}"
+
+# Файл .env рядом с этим compose:
+# API_KEY=your-super-secret-key
+# ADB_HOST=127.0.0.1
+# ADB_PORT=5555

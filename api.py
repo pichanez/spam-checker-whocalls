@@ -3,6 +3,7 @@ import uuid
 import threading
 import asyncio
 from typing import List, Dict, Optional, Any
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
@@ -19,19 +20,15 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 async def get_api_key(
     api_key: str = Security(api_key_header)
 ) -> str:
-    """
-    Проверка переданного API-ключа.
-    """
     if not API_KEY or api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Forbidden")
     return api_key
 
-# Генерация идентификатора задачи
+# Параметры TTL для задач
+CLEANUP_INTERVAL_SECONDS = 60        # интервал очистки
+JOB_TTL = timedelta(hours=1)         # время жизни задачи
 
-def generate_job_id() -> str:
-    return uuid.uuid4().hex
-
-# Хранилище задач и блокировка для потокобезопасного доступа
+# Структура для хранения задач: status, results, error, created_at
 jobs: Dict[str, Dict[str, Any]] = {}
 jobs_lock = threading.Lock()
 
@@ -53,39 +50,47 @@ class StatusResponse(BaseModel):
     results: Optional[List[CheckResult]] = None
     error: Optional[str] = None
 
-# Создание FastAPI-приложения с глобальной защитой API-ключом
+# Создаем FastAPI-приложение
 app = FastAPI(
     title="Kaspersky Who Calls Checker API",
     version="1.3",
     dependencies=[Depends(get_api_key)]
 )
 
+async def cleanup_jobs():
+    """Периодически удаляет старые задачи из памяти"""
+    while True:
+        now = datetime.utcnow()
+        with jobs_lock:
+            to_delete = []
+            for job_id, info in jobs.items():
+                created = info.get("created_at")
+                if created and now - created > JOB_TTL:
+                    to_delete.append(job_id)
+            for jid in to_delete:
+                del jobs[jid]
+        await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+
+@app.on_event("startup")
+async def start_cleanup_task():
+    """Запускает фоновую корутину для очистки старых задач"""
+    asyncio.create_task(cleanup_jobs())
+
 async def _run_check(job_id: str, numbers: List[str], device: str):
-    """
-    Фоновая функция для выполнения проверки списка номеров.
-    """
     checker = KasperskyWhoCallsChecker(device)
     results: List[CheckResult] = []
     try:
-        # Запуск приложения один раз
         if not checker.launch_app():
             raise RuntimeError("Failed to launch Kaspersky Who Calls app on device")
-
         loop = asyncio.get_event_loop()
         for number in numbers:
-            # Открываем экран поиска
-            await loop.run_in_executor(None, checker.open_search)
-            # Выполняем проверку
             res: PhoneCheckResult = await loop.run_in_executor(None, checker.check_number, number)
             results.append(CheckResult(
                 phone_number=res.phone_number,
                 status=res.status,
                 details=res.details
             ))
-        # Закрываем приложение после всех проверок
         await loop.run_in_executor(None, checker.close_app)
-
-        # Обновляем статус задачи
         with jobs_lock:
             jobs[job_id]["status"] = "completed"
             jobs[job_id]["results"] = results
@@ -102,22 +107,22 @@ def submit_check(
 ) -> JobResponse:
     """
     Создает задачу проверки телефонных номеров.
-    Если предыдущая задача ещё выполняется, возвращает 429.
+    Если предыдущая задача всё ещё выполняется, возвращает 429.
     Возвращает job_id для отслеживания.
     """
-    # Блокируем создание новой задачи при активной
     with jobs_lock:
-        if any(job.get("status") == "in_progress" for job in jobs.values()):
+        if any(info.get("status") == "in_progress" for info in jobs.values()):
             raise HTTPException(status_code=429, detail="Previous task is still in progress")
-        job_id = generate_job_id()
-        jobs[job_id] = {"status": "in_progress", "results": None, "error": None}
-
-    # Формируем device из переменных окружения
+        job_id = uuid.uuid4().hex
+        jobs[job_id] = {
+            "status": "in_progress",
+            "results": None,
+            "error": None,
+            "created_at": datetime.utcnow()
+        }
     adb_host = os.getenv("ADB_HOST", "127.0.0.1")
     adb_port = os.getenv("ADB_PORT", "5555")
     device = f"{adb_host}:{adb_port}"
-
-    # Запуск фоновой задачи
     background_tasks.add_task(_run_check, job_id, request.numbers, device)
     return JobResponse(job_id=job_id)
 
@@ -133,7 +138,6 @@ def get_status(
         job = jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job ID not found")
-
     return StatusResponse(
         job_id=job_id,
         status=job["status"],
