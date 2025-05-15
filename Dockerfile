@@ -18,7 +18,8 @@ COPY . .
 
 # Создаём entrypoint-скрипт внутри контейнера без CRLF
 RUN printf '#!/bin/sh\n' > /entrypoint.sh \
-    && printf 'adb connect ${ADB_HOST}:${ADB_PORT}\n' >> /entrypoint.sh \
+    && printf 'adb connect ${KASP_ADB_HOST}:${KASP_ADB_PORT}\n' >> /entrypoint.sh \
+    && printf 'adb connect ${TC_ADB_HOST}:${TC_ADB_PORT}\n' >> /entrypoint.sh \
     && printf 'exec uvicorn api:app --host 0.0.0.0 --port 8000\n' >> /entrypoint.sh \
     && chmod +x /entrypoint.sh
 

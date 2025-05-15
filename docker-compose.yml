@@ -18,8 +18,10 @@ services:
     environment:
       # Передваем переменные окружения в контейнер
       - API_KEY=${API_KEY}
-      - ADB_HOST=${ADB_HOST}
-      - ADB_PORT=${ADB_PORT}
+      - KASP_ADB_HOST=${KASP_ADB_HOST}
+      - KASP_ADB_PORT=${KASP_ADB_PORT}
+      - TC_ADB_HOST=${TC_ADB_HOST}
+      - TC_ADB_PORT=${TC_ADB_PORT}
 
 # Файл .env рядом с этим compose:
 # API_KEY=your-super-secret-key
