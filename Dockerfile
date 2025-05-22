@@ -20,6 +20,7 @@ COPY . .
 RUN printf '#!/bin/sh\n' > /entrypoint.sh \
     && printf 'adb connect ${KASP_ADB_HOST}:${KASP_ADB_PORT}\n' >> /entrypoint.sh \
     && printf 'adb connect ${TC_ADB_HOST}:${TC_ADB_PORT}\n' >> /entrypoint.sh \
+    && printf 'adb connect ${GC_ADB_HOST}:${GC_ADB_PORT}\n' >> /entrypoint.sh \
     && printf 'exec uvicorn api:app --host 0.0.0.0 --port 8000\n' >> /entrypoint.sh \
     && chmod +x /entrypoint.sh
 

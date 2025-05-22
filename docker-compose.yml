@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: kaspersky-checker-api
+    container_name: phone-checker-api
     env_file:
       - .env
     ports:
@@ -22,6 +22,8 @@ services:
       - KASP_ADB_PORT=${KASP_ADB_PORT}
       - TC_ADB_HOST=${TC_ADB_HOST}
       - TC_ADB_PORT=${TC_ADB_PORT}
+      - GC_ADB_HOST=${GC_ADB_HOST}
+      - GC_ADB_PORT=${GC_ADB_PORT}
 
 # Файл .env рядом с этим compose:
 # API_KEY=your-super-secret-key
