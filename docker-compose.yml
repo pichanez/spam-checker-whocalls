@@ -1,22 +1,14 @@
-version: "3.8"
+version: '3.8'
 
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: phone-checker-api
-    env_file:
-      - .env
     ports:
-      # FastAPI HTTP API доступен извне
       - "8000:8000"
-    volumes:
-      # Монтируем каталог проекта внутрь контейнера для разработки
-      - ./:/app:delegated
-    restart: unless-stopped
+      - "8001:8001"  # Prometheus metrics
     environment:
-      # Передваем переменные окружения в контейнер
       - API_KEY=${API_KEY}
       - KASP_ADB_HOST=${KASP_ADB_HOST}
       - KASP_ADB_PORT=${KASP_ADB_PORT}
@@ -24,8 +16,37 @@ services:
       - TC_ADB_PORT=${TC_ADB_PORT}
       - GC_ADB_HOST=${GC_ADB_HOST}
       - GC_ADB_PORT=${GC_ADB_PORT}
+      - REDIS_URL=redis://redis:6379/0
+      - CACHE_TTL=${CACHE_TTL:-86400}
+      - CACHE_ENABLED=${CACHE_ENABLED:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CLEANUP_INTERVAL_SECONDS=${CLEANUP_INTERVAL_SECONDS:-60}
+      - JOB_TTL_HOURS=${JOB_TTL_HOURS:-1}
+      - MAX_CONCURRENT_JOBS=${MAX_CONCURRENT_JOBS:-3}
+      - METRICS_PORT=8001
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - phone-checker-network
 
-# Файл .env рядом с этим compose:
-# API_KEY=your-super-secret-key
-# ADB_HOST=127.0.0.1
-# ADB_PORT=5555
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - phone-checker-network
+
+networks:
+  phone-checker-network:
+    driver: bridge
+
+volumes:
+  redis-data:
