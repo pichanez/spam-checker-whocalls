@@ -1,37 +1,125 @@
-version: "3.8"
-
-networks:
-  caddy:
-    external: true
+version: '3.8'
 
 services:
-  api:
-    networks: [caddy]
-    expose: ["8000"]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: phone-checker-api
-    env_file:
-      - .env
-    volumes:
-      # Монтируем каталог проекта внутрь контейнера для разработки
-      - ./:/app:delegated
-    restart: unless-stopped
+  app:
+    image: pichanez/phone-spam-checker:latest
+    container_name: phone-spam-checker
+    restart: always
+    ports:
+      - "8000:8000"  # API
+      - "8001:8001"  # Prometheus metrics
     environment:
-      # Передваем переменные окружения в контейнер
+      - REDIS_URL=redis://redis:6379/0
       - API_KEY=${API_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CACHE_ENABLED=${CACHE_ENABLED:-true}
+      - CACHE_TTL=${CACHE_TTL:-86400}
+      - METRICS_PORT=8001
       - KASP_ADB_HOST=${KASP_ADB_HOST}
       - KASP_ADB_PORT=${KASP_ADB_PORT}
       - TC_ADB_HOST=${TC_ADB_HOST}
       - TC_ADB_PORT=${TC_ADB_PORT}
       - GC_ADB_HOST=${GC_ADB_HOST}
       - GC_ADB_PORT=${GC_ADB_PORT}
-    labels:
-      caddy: telephony.visotsky.com
-      caddy.reverse_proxy: "{{upstreams 8000}}"
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    networks:
+      - phone-checker-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+        window: 120s
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-# Файл .env рядом с этим compose:
-# API_KEY=your-super-secret-key
-# ADB_HOST=127.0.0.1
-# ADB_PORT=5555
+  redis:
+    image: redis:6-alpine
+    container_name: phone-checker-redis
+    restart: always
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme}
+    networks:
+      - phone-checker-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: phone-checker-prometheus
+    restart: always
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - phone-checker-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: phone-checker-grafana
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    networks:
+      - phone-checker-network
+    depends_on:
+      - prometheus
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  phone-checker-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:
