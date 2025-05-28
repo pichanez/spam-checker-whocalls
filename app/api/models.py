@@ -19,7 +19,9 @@ class PhoneCheckResult:
     status: str  # Use PhoneStatus constants
     details: str = ""
     source: str = ""  # Use CheckerSource constants
-
+    def __str__(self) -> str:         # вывод для логов
+        return (f"☎ {self.phone_number:<12} | {self.status:<15} | "
+                f"{self.details} | src={self.source}")
 
 class CheckRequest(BaseModel):
     """Request model for checking phone numbers."""

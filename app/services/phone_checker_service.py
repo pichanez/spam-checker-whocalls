@@ -210,7 +210,7 @@ class PhoneCheckerService:
         
         # Check with the actual strategy
         result = strategy.check_number(phone)
-        logger.info(result)
+
         # Cache the result
         if use_cache:
             await self._save_to_cache(result)
@@ -275,7 +275,7 @@ class PhoneCheckerService:
                     number, force_source, use_cache
                 )
                 results.append(result)
-                
+                logger.info("%s", result)
                 processed += 1
                 self.update_progress(job_id, (processed / total_numbers) * 100)
                 

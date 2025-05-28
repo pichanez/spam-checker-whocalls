@@ -54,7 +54,15 @@ class AndroidDevice(DeviceInterface):
         except Exception as e:
             logger.error(f"Failed to connect to device {self.device_id}: {e}")
             raise DeviceConnectionError(f"Failed to connect to device {self.device_id}: {e}") from e
-    
+    def _ensure_connected(self) -> bool:
+        if self.d:
+            return True
+        try:
+            return self.connect()
+        except Exception as exc:
+            logger.exception("Device connection error: %s", exc)
+            return False    
+        
     def launch_app(self, package: str, activity: str = "") -> bool:
         """
         Launch application on the device.
@@ -66,23 +74,32 @@ class AndroidDevice(DeviceInterface):
         Returns:
             bool: True if app launched successfully, False otherwise
         """
-        if not self.d:
-            if not self.connect():
-                return False
-        else:
-            return True
-        
-        try:
-            logger.info(f"Launching app {package}")
-            if activity:
-                self.d.app_start(package, activity)
-            else:
-                self.d.app_start(package)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to launch app {package}: {e}")
+        if not self._ensure_connected():
             return False
-    
+
+        if self.is_app_running(package):
+            return True
+
+        try:
+            logger.info("Launching %s%s", package,
+                        f'/{activity}' if activity else '')
+            self.d.app_start(package, activity)
+        except Exception as exc:
+            logger.exception("Failed to launch %s: %s", package, exc)
+            return False
+
+        return self.is_app_running(package)
+        
+    def is_app_running(self, package: str) -> bool:
+        try:
+            running = self.d.app_list_running()
+            return package in running
+        except Exception:
+            try:
+                return self.d.app_current().get("package") == package
+            except Exception:
+                return False  
+            
     def close_app(self, package: str) -> bool:
         """
         Close application on the device.
@@ -106,10 +123,10 @@ class AndroidDevice(DeviceInterface):
     
     @retry(
         stop=stop_after_attempt(3),
-        wait=wait_fixed(2),
+        wait=wait_fixed(1),
         retry=retry_if_exception_type(UIInteractionError)
     )
-    def click_element(self, locator: Dict[str, Any], timeout: int = 5) -> bool:
+    def click_element(self, locator: Dict[str, Any], timeout: int = 1) -> bool:
         """
         Click on a UI element with retry mechanism.
         
@@ -138,7 +155,7 @@ class AndroidDevice(DeviceInterface):
         
     @retry(
         stop=stop_after_attempt(3),
-        wait=wait_fixed(2),
+        wait=wait_fixed(0),
         retry=retry_if_exception_type(UIInteractionError)
     )
     def press(self, key: Union[int, str]) -> bool:
@@ -168,10 +185,10 @@ class AndroidDevice(DeviceInterface):
     
     @retry(
         stop=stop_after_attempt(3),
-        wait=wait_fixed(2),
+        wait=wait_fixed(0),
         retry=retry_if_exception_type(UIInteractionError)
     )
-    def input_text(self, locator: Dict[str, Any], text: str, timeout: int = 5) -> bool:
+    def input_text(self, locator: Dict[str, Any], text: str, timeout: int = 1) -> bool:
         """
         Input text into a UI element with retry mechanism.
         
@@ -235,7 +252,7 @@ class AndroidDevice(DeviceInterface):
         
         return self.d(**locator).exists(timeout=timeout)
     
-    def get_element_text(self, locator: Dict[str, Any], timeout: int = 5) -> Optional[str]:
+    def get_element_text(self, locator: Dict[str, Any], timeout: int = 2) -> Optional[str]:
         """
         Get text from a UI element.
         

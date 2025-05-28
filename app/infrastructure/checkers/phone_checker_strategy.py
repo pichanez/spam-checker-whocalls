@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, List, Type
 
 from app.api.models import PhoneCheckResult
 from app.utils.constants import PhoneStatus, CheckerSource
-from app.utils.exceptions import PhoneCheckerError
+from app.utils.exceptions import PhoneCheckerError, AppLaunchError, UIInteractionError
 from app.utils.phone_utils import is_russian_number
 from app.infrastructure.device.device_interface import DeviceInterface
 
@@ -97,12 +97,35 @@ class KasperskyPhoneCheckerStrategy(PhoneCheckerStrategy):
     
     def launch_app(self) -> bool:
         """
-        Launch the Kaspersky Who Calls application.
-        
-        Returns:
-            bool: True if app launched successfully, False otherwise
+        Launch the *Kaspersky Who Calls* application and ensure the
+        “Check number” screen is ready.
+
+        Returns
+        -------
+        bool
+            • **True** – the app started and either the number‐input
+            field is already on screen or the “Check number” button
+            was tapped successfully.  
+            • **False** – something went wrong while starting the app
+            or navigating to the check-number screen.
         """
-        return self.device.launch_app(self.app_package, self.app_activity)
+        try:
+            #Start the target activity.
+            if not self.device.launch_app(self.app_package, self.app_activity):
+                raise AppLaunchError("Unable to start 'Kaspersky Who Calls'")
+
+            #If the input field is still missing, tap “Check number”.
+            input_field_present = self.device.element_exists(
+                {"className": "android.widget.EditText"}
+            )
+            if not input_field_present:
+                if not self.device.click_element({"description": "Check number"}):
+                    raise AppLaunchError("Unable to open number-checking screen")
+
+        except Exception:
+            return False
+
+        return True
     
     def check_number(self, phone: str) -> PhoneCheckResult:
         """
@@ -121,16 +144,6 @@ class KasperskyPhoneCheckerStrategy(PhoneCheckerStrategy):
                     phone_number=phone,
                     status=PhoneStatus.ERROR,
                     details="Failed to launch Kaspersky Who Calls",
-                    source=self.source_name
-                )
-            
-            # Click on "Check number" button
-            check_number_button = {'description': 'Check number'}
-            if not self.device.click_element(check_number_button):
-                return PhoneCheckResult(
-                    phone_number=phone,
-                    status=PhoneStatus.ERROR,
-                    details="Failed to find 'Check number' button",
                     source=self.source_name
                 )
             
@@ -159,7 +172,6 @@ class KasperskyPhoneCheckerStrategy(PhoneCheckerStrategy):
             no_feedback = {'text': 'No feedback on the number'}
             if self.device.element_exists(no_feedback, timeout=5):
                 self.device.click_element({'resourceId': 'android:id/button2'})
-                self.device.press("back")
 
                 return PhoneCheckResult(
                     phone_number=phone,
@@ -190,7 +202,6 @@ class KasperskyPhoneCheckerStrategy(PhoneCheckerStrategy):
                     source=self.source_name
                 )
             
-            self.device.press("back")
 
             # Default case if no specific indicators found
             return PhoneCheckResult(
@@ -235,12 +246,32 @@ class TruecallerPhoneCheckerStrategy(PhoneCheckerStrategy):
     
     def launch_app(self) -> bool:
         """
-        Launch the Truecaller application.
-        
-        Returns:
-            bool: True if app launched successfully, False otherwise
+        Launch the *Truecaller* application and ensure the
+        “Check number” screen is ready.
+
+        Returns
+        -------
+        bool
+            • **True** – the app started and either the number‐input
+            field is already on screen.
+            • **False** – something went wrong while starting the app
+            or navigating to the check-number screen.
         """
-        return self.device.launch_app(self.app_package, self.app_activity)
+        try:
+            if not self.device.launch_app(self.app_package, self.app_activity):
+                raise AppLaunchError("Unable to start 'Truecaller'")
+
+            input_field_present = self.device.element_exists(
+                {'resourceId': 'com.truecaller:id/search_field'}
+            )
+            if not input_field_present:
+                if not self.device.click_element({'resourceId': 'com.truecaller:id/searchBarLabel'}):
+                    raise AppLaunchError("Unable to open number-checking screen")
+
+        except Exception:
+            return False
+
+        return True
     
     def check_number(self, phone: str) -> PhoneCheckResult:
         """
@@ -259,16 +290,6 @@ class TruecallerPhoneCheckerStrategy(PhoneCheckerStrategy):
                     phone_number=phone,
                     status=PhoneStatus.ERROR,
                     details="Failed to launch Truecaller",
-                    source=self.source_name
-                )
-            
-            # Click on search bar
-            search_bar = {'resourceId': 'com.truecaller:id/searchBarLabel'}
-            if not self.device.click_element(search_bar):
-                return PhoneCheckResult(
-                    phone_number=phone,
-                    status=PhoneStatus.ERROR,
-                    details="Failed to find search bar",
                     source=self.source_name
                 )
             
