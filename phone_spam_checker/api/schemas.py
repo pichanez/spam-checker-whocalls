@@ -8,6 +8,8 @@ from phone_spam_checker.validators import validate_phone_number
 
 class CheckRequest(BaseModel):
     numbers: List[str]
+    # 'auto' – use kaspersky, getcontact and tbank for Russian numbers,
+    # truecaller for others
     service: str = "auto"  # 'auto', 'kaspersky', 'truecaller', 'getcontact', 'tbank'
 
     @field_validator("numbers")

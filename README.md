@@ -94,8 +94,9 @@ POST `/check_numbers` expects JSON body:
 }
 ```
 
-The `service` field controls which checker is used. By default (`"auto"`) the
-service will choose Kaspersky for Russian numbers and Truecaller otherwise.
+The `service` field controls which checker is used. By default (`"auto"`)
+Russian numbers are verified via Kaspersky Who Calls, GetContact and the
+Tbank web service, while Truecaller is used only for international numbers.
 If a required ADB device is unreachable the API responds with HTTP 503 and a
 message describing the problem.
 
