@@ -23,7 +23,11 @@ from jwt import PyJWTError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
-from phone_spam_checker.job_manager import JobManager, SQLiteJobRepository
+from phone_spam_checker.job_manager import (
+    JobManager,
+    SQLiteJobRepository,
+    PostgresJobRepository,
+)
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
 
@@ -75,7 +79,11 @@ for mod in filter(None, getattr(settings, "checker_modules", [])):
     load_checker_module(mod)
 logger = logging.getLogger(__name__)
 
-job_manager = JobManager(SQLiteJobRepository(settings.job_db_path))
+if settings.pg_host:
+    job_repo = PostgresJobRepository(settings.pg_dsn)
+else:
+    job_repo = SQLiteJobRepository(settings.job_db_path)
+job_manager = JobManager(job_repo)
 job_queue: asyncio.Queue[tuple[str, List[str], str]] = asyncio.Queue()
 
 

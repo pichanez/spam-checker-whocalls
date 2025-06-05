@@ -25,6 +25,29 @@ services:
       - TC_ADB_PORT=${TC_ADB_PORT}
       - GC_ADB_HOST=${GC_ADB_HOST}
       - GC_ADB_PORT=${GC_ADB_PORT}
+      - PG_HOST=${PG_HOST}
+      - PG_PORT=${PG_PORT}
+      - PG_DB=${PG_DB}
+      - PG_USER=${PG_USER}
+      - PG_PASSWORD=${PG_PASSWORD}
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16
+    container_name: phone-checker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PG_DB}
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  pgdata:
 
 # .env file next to this compose:
 # API_KEY=your-super-secret-key

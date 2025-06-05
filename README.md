@@ -20,6 +20,9 @@ The application loads its configuration from environment variables. The most imp
 - `TC_ADB_HOST` / `TC_ADB_PORT` – address of the device with Truecaller.
 - `GC_ADB_HOST` / `GC_ADB_PORT` – address of the device with GetContact.
 - `JOB_DB_PATH` – path to the SQLite file storing job statuses.
+- `PG_HOST` / `PG_PORT` – address of the Postgres server.
+- `PG_DB` – database name.
+- `PG_USER` / `PG_PASSWORD` – credentials for Postgres.
 - `LOG_LEVEL` – logging verbosity (e.g. `INFO`, `DEBUG`).
 - `LOG_FORMAT` – Python logging format string.
 - `LOG_FILE` – optional path to a file where logs will be written.
@@ -30,7 +33,7 @@ Values can be provided in an `.env` file which is read by `docker-compose`.
 
 ## Running with Docker
 
-A simple way to start the service is via `docker-compose`:
+A simple way to start the service is via `docker-compose` which will launch the API and a Postgres instance:
 
 ```bash
 # create .env file with all required variables

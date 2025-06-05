@@ -7,7 +7,12 @@ from .infrastructure import (
     TruecallerChecker,
     GetContactChecker,
 )
-from .job_manager import JobManager, JobRepository, SQLiteJobRepository
+from .job_manager import (
+    JobManager,
+    JobRepository,
+    SQLiteJobRepository,
+    PostgresJobRepository,
+)
 from .logging_config import configure_logging
 from .device_client import AndroidDeviceClient
 from .config import settings
@@ -24,6 +29,7 @@ __all__ = [
     "JobManager",
     "JobRepository",
     "SQLiteJobRepository",
+    "PostgresJobRepository",
     "configure_logging",
     "AndroidDeviceClient",
     "settings",
