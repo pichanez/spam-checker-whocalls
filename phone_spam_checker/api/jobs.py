@@ -317,46 +317,72 @@ async def _run_check_auto(
     tc_nums = [n.lstrip("+") for n in intl_nums_orig]
 
     try:
-        if kasp_nums:
-            kasp_device = kasp_device or f"{settings.kasp_adb_host}:{settings.kasp_adb_port}"
-            await asyncio.to_thread(_ping_device, *kasp_device.split(":"))
-            kasp_checker = await asyncio.to_thread(kasp_cls, kasp_device)
+        async def run_kaspersky() -> Dict[str, PhoneCheckResult]:
+            nonlocal kasp_checker
+            res: Dict[str, PhoneCheckResult] = {}
+            kasp_device_addr = kasp_device or f"{settings.kasp_adb_host}:{settings.kasp_adb_port}"
+            await asyncio.to_thread(_ping_device, *kasp_device_addr.split(":"))
+            kasp_checker = await asyncio.to_thread(kasp_cls, kasp_device_addr)
             launched = await asyncio.to_thread(kasp_checker.launch_app)
             if not launched:
                 raise RuntimeError("Failed to launch Kaspersky Who Calls")
             raw = await asyncio.to_thread(lambda: [kasp_checker.check_number(n) for n in kasp_nums])
             for orig, r in zip(ru_nums_orig, raw):
-                results_map[orig].append(r)
+                res[orig] = r
+            return res
 
-        if gc_nums:
-            gc_device = gc_device or f"{settings.gc_adb_host}:{settings.gc_adb_port}"
-            await asyncio.to_thread(_ping_device, *gc_device.split(":"))
-            gc_checker = await asyncio.to_thread(gc_cls, gc_device)
+        async def run_getcontact() -> Dict[str, PhoneCheckResult]:
+            nonlocal gc_checker
+            res: Dict[str, PhoneCheckResult] = {}
+            gc_device_addr = gc_device or f"{settings.gc_adb_host}:{settings.gc_adb_port}"
+            await asyncio.to_thread(_ping_device, *gc_device_addr.split(":"))
+            gc_checker = await asyncio.to_thread(gc_cls, gc_device_addr)
             launched = await asyncio.to_thread(gc_checker.launch_app)
             if not launched:
                 raise RuntimeError("Failed to launch GetContact")
             raw = await asyncio.to_thread(lambda: [gc_checker.check_number(n) for n in gc_nums])
             for orig, r in zip(gc_nums, raw):
-                results_map[orig].append(r)
+                res[orig] = r
+            return res
 
-        if tb_nums:
+        async def run_tbank() -> Dict[str, PhoneCheckResult]:
+            nonlocal tb_checker
+            res: Dict[str, PhoneCheckResult] = {}
             tb_checker = await asyncio.to_thread(tb_cls, "")
             launched = await asyncio.to_thread(tb_checker.launch_app)
             if not launched:
                 raise RuntimeError("Failed to init Tbank checker")
             raw = await asyncio.to_thread(lambda: [tb_checker.check_number(n) for n in tb_nums])
             for orig, r in zip(ru_nums_orig, raw):
-                results_map[orig].append(r)
+                res[orig] = r
+            return res
 
-        if tc_nums:
-            tc_device = tc_device or f"{settings.tc_adb_host}:{settings.tc_adb_port}"
-            await asyncio.to_thread(_ping_device, *tc_device.split(":"))
-            tc_checker = await asyncio.to_thread(tc_cls, tc_device)
+        async def run_truecaller() -> Dict[str, PhoneCheckResult]:
+            nonlocal tc_checker
+            res: Dict[str, PhoneCheckResult] = {}
+            tc_device_addr = tc_device or f"{settings.tc_adb_host}:{settings.tc_adb_port}"
+            await asyncio.to_thread(_ping_device, *tc_device_addr.split(":"))
+            tc_checker = await asyncio.to_thread(tc_cls, tc_device_addr)
             launched = await asyncio.to_thread(tc_checker.launch_app)
             if not launched:
                 raise RuntimeError("Failed to launch Truecaller")
             raw = await asyncio.to_thread(lambda: [tc_checker.check_number(n) for n in tc_nums])
             for orig, r in zip(intl_nums_orig, raw):
+                res[orig] = r
+            return res
+
+        tasks = []
+        if kasp_nums:
+            tasks.append(run_kaspersky())
+        if gc_nums:
+            tasks.append(run_getcontact())
+        if tb_nums:
+            tasks.append(run_tbank())
+        if tc_nums:
+            tasks.append(run_truecaller())
+
+        for mapping in await asyncio.gather(*tasks):
+            for orig, r in mapping.items():
                 results_map[orig].append(r)
 
         def pick_best(phone: str, items: List[PhoneCheckResult]) -> CheckResult:
