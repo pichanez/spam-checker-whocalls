@@ -33,10 +33,10 @@ class DummyRepository(JobRepository):
     def __init__(self, job_data=None):
         self.job_data = job_data or {}
 
-    def new_job(self):
+    def new_job(self, devices):
         return "job123"
 
-    def ensure_no_running(self):
+    def ensure_no_running(self, device):
         pass
 
     def get_job(self, job_id):
@@ -66,7 +66,7 @@ class DummyJobManager(JobManager):
     def __init__(self):
         super().__init__(DummyRepository())
 
-    def ensure_no_running(self) -> None:
+    def ensure_no_running(self, device) -> None:
         pass
 
 
@@ -78,7 +78,7 @@ def _auth_header(client: TestClient) -> dict[str, str]:
 
 def test_submit_check(monkeypatch):
     monkeypatch.setattr(api, "job_manager", JobManager(DummyRepository()))
-    monkeypatch.setattr(api, "_new_job", lambda: "job123")
+    monkeypatch.setattr(api, "_new_job", lambda service: "job123")
     called = {}
 
     async def fake_enqueue(job_id, numbers, service):
@@ -134,7 +134,7 @@ async def _dummy_run_check(job_id, numbers, service):
 def test_background_task_completion(monkeypatch):
     manager = JobManager(DummyRepository())
     monkeypatch.setattr(api, "job_manager", manager)
-    monkeypatch.setattr(api, "_new_job", lambda: "job123")
+    monkeypatch.setattr(api, "_new_job", lambda service: "job123")
 
     async def immediate(job_id, numbers, service):
         await _dummy_run_check(job_id, numbers, service)
@@ -179,7 +179,7 @@ def test_job_failed_when_device_unreachable(monkeypatch):
 
     manager = JobManager(DummyRepository())
     monkeypatch.setattr(api, "job_manager", manager)
-    monkeypatch.setattr(api, "_new_job", lambda: "job123")
+    monkeypatch.setattr(api, "_new_job", lambda service: "job123")
     monkeypatch.setattr(api, "_ping_device", failing_ping)
 
     async def immediate(job_id, numbers, service):
@@ -205,11 +205,11 @@ def test_job_failed_when_device_unreachable(monkeypatch):
 
 def test_job_already_running(monkeypatch):
     class BusyJobManager(DummyJobManager):
-        def ensure_no_running(self):
+        def ensure_no_running(self, device):
             raise api.JobAlreadyRunningError("Previous task is still in progress")
 
     monkeypatch.setattr(api, "job_manager", BusyJobManager())
-    monkeypatch.setattr(api, "_new_job", lambda: "job123")
+    monkeypatch.setattr(api, "_new_job", lambda service: "job123")
 
     client = TestClient(api.app)
     headers = _auth_header(client)
@@ -231,3 +231,38 @@ def test_invalid_phone_number():
         headers=headers,
     )
     assert response.status_code == 422
+
+
+def test_multiple_jobs(monkeypatch):
+    manager = JobManager(DummyRepository())
+    monkeypatch.setattr(api, "job_manager", manager)
+    ids = ["job1", "job2"]
+
+    def gen_id(service):
+        return ids.pop(0)
+
+    monkeypatch.setattr(api, "_new_job", gen_id)
+
+    async def immediate(job_id, numbers, service):
+        await _dummy_run_check(job_id, numbers, service)
+
+    monkeypatch.setattr(api, "enqueue_job", immediate)
+
+    client = TestClient(api.app)
+    headers = _auth_header(client)
+
+    r1 = client.post(
+        "/check_numbers",
+        json={"numbers": ["111"], "service": "kaspersky"},
+        headers=headers,
+    )
+    r2 = client.post(
+        "/check_numbers",
+        json={"numbers": ["222"], "service": "truecaller"},
+        headers=headers,
+    )
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert manager.get_job("job1")["status"] == "completed"
+    assert manager.get_job("job2")["status"] == "completed"
