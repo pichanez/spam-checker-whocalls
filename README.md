@@ -1,7 +1,8 @@
 # Phone Spam Checker
 
 This project provides a FastAPI service and CLI utilities for checking phone numbers using
-Kaspersky Who Calls, Truecaller and GetContact running on connected Android devices.
+Kaspersky Who Calls, Truecaller, GetContact running on connected Android devices,
+and the Tbank web service for Russian numbers.
 
 ## Requirements
 
@@ -89,12 +90,13 @@ POST `/check_numbers` expects JSON body:
 ```json
 {
   "numbers": ["123"],
-  "service": "auto"  // or "kaspersky", "truecaller", "getcontact"
+  "service": "auto"  // or "kaspersky", "truecaller", "getcontact", "tbank"
 }
 ```
 
-The `service` field controls which checker is used. By default (`"auto"`) the
-service will choose Kaspersky for Russian numbers and Truecaller otherwise.
+The `service` field controls which checker is used. By default (`"auto"`)
+Russian numbers are verified via Kaspersky Who Calls, GetContact and the
+Tbank web service, while Truecaller is used only for international numbers.
 If a required ADB device is unreachable the API responds with HTTP 503 and a
 message describing the problem.
 
@@ -129,7 +131,7 @@ Run checks without the API using:
 python -m scripts.phone_checker_cli SERVICE --input phones.txt --output results.csv --device 127.0.0.1:5555
 ```
 
-Replace `SERVICE` with `kaspersky`, `truecaller` or `getcontact`. Any additional arguments are passed to the chosen checker.
+Replace `SERVICE` with `kaspersky`, `truecaller`, `getcontact` or `tbank`. Any additional arguments are passed to the chosen checker.
 
 В сценариях командной строки инициализация выполняется автоматически,
 поэтому достаточно запустить скрипт, как показано выше.

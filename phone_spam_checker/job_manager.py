@@ -96,8 +96,14 @@ class BaseJobRepository(JobRepository, ABC):
             status = item.get("status")
             if hasattr(status, "value"):
                 item["status"] = status.value
+            services = item.get("services")
+            if isinstance(services, list):
+                for svc in services:
+                    st = svc.get("status")
+                    if hasattr(st, "value"):
+                        svc["status"] = st.value
             serializable.append(item)
-        results_json = json.dumps(serializable)
+        results_json = json.dumps(serializable, ensure_ascii=False)
         with self._lock:
             self._update_job(job_id, status="completed", results=results_json)
 
@@ -122,7 +128,16 @@ class BaseJobRepository(JobRepository, ABC):
                             entry["status"] = CheckStatus(st)
                         except Exception:
                             pass
-                results = [PhoneCheckResult(**entry) for entry in data]
+                    services = entry.get("services")
+                    if isinstance(services, list):
+                        for svc in services:
+                            st2 = svc.get("status")
+                            if isinstance(st2, str):
+                                try:
+                                    svc["status"] = CheckStatus(st2)
+                                except Exception:
+                                    pass
+                results = data
             except Exception:
                 results = None
         if isinstance(created_at, str):

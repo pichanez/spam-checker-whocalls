@@ -40,6 +40,7 @@ def init_app(app: FastAPI) -> None:
         "kaspersky": settings.kasp_devices,
         "truecaller": settings.tc_devices,
         "getcontact": settings.gc_devices,
+        "tbank": [],
     }
     pools: Dict[str, DevicePool] = {}
     for svc, devs in devices_map.items():

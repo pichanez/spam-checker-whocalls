@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from phone_spam_checker.config import settings
 from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
-from .schemas import CheckResult
+from .schemas import CheckResult, ServiceResult
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.exceptions import DeviceConnectionError, JobAlreadyRunningError
 from phone_spam_checker.job_manager import JobManager
@@ -35,23 +35,41 @@ async def _worker(app: FastAPI) -> None:
     while True:
         job_id, numbers, service = await queue.get()
         try:
-            if service == "getcontact":
-                with pools["getcontact"] as gc_dev:
-                    await _run_check_gc(job_id, numbers, job_manager, gc_dev)
-            else:
-                with contextlib.ExitStack() as stack:
-                    kasp_dev = tc_dev = None
-                    if service in {"kaspersky", "auto"}:
-                        kasp_dev = stack.enter_context(pools["kaspersky"])
-                    if service in {"truecaller", "auto"}:
-                        tc_dev = stack.enter_context(pools["truecaller"])
+            if service == "kaspersky":
+                with pools["kaspersky"] as kasp_dev:
                     await _run_check(
                         job_id,
                         numbers,
                         service,
                         job_manager,
                         kasp_device=kasp_dev,
+                    )
+            elif service == "truecaller":
+                with pools["truecaller"] as tc_dev:
+                    await _run_check(
+                        job_id,
+                        numbers,
+                        service,
+                        job_manager,
                         tc_device=tc_dev,
+                    )
+            elif service == "getcontact":
+                with pools["getcontact"] as gc_dev:
+                    await _run_check_gc(job_id, numbers, job_manager, gc_dev)
+            elif service == "tbank":
+                await _run_check_tbank(job_id, numbers, job_manager)
+            else:  # auto
+                with contextlib.ExitStack() as stack:
+                    kasp_dev = stack.enter_context(pools["kaspersky"])
+                    tc_dev = stack.enter_context(pools["truecaller"])
+                    gc_dev = stack.enter_context(pools["getcontact"])
+                    await _run_check_auto(
+                        job_id,
+                        numbers,
+                        job_manager,
+                        kasp_device=kasp_dev,
+                        tc_device=tc_dev,
+                        gc_device=gc_dev,
                     )
         except JobAlreadyRunningError as exc:
             _fail_job(job_id, str(exc), job_manager)
@@ -69,7 +87,7 @@ async def cleanup_jobs(app: FastAPI) -> None:
 async def start_background_tasks(app: FastAPI) -> None:
     initialize()
     asyncio.create_task(cleanup_jobs(app))
-    services = ["kaspersky", "truecaller", "getcontact"]
+    services = ["kaspersky", "truecaller", "getcontact", "tbank"]
     pools = app.state.device_pools
     device_count = sum(len(pools[svc]) for svc in services)
     num_workers = settings.worker_count or device_count
@@ -100,7 +118,7 @@ async def _run_check(
         kasp_nums = []
         tc_nums = numbers
     else:  # auto
-        kasp_nums = [n for n in numbers if re.match(r"^(7|\+7)9", n)]
+        kasp_nums = [n for n in numbers if re.match(r"^(?:7|8)\d{10}$", n)]
         tc_nums = [n for n in numbers if n not in kasp_nums]
 
     # -- ADB device addresses
@@ -152,13 +170,19 @@ async def _run_check(
             if r:
                 results.append(
                     CheckResult(
-                        phone_number=r.phone_number, status=r.status, details=r.details
+                        phone_number=r.phone_number,
+                        status=r.status,
+                        details=r.details,
+                        services=[ServiceResult(service=service, status=r.status, details=r.details)],
                     )
                 )
             else:
                 results.append(
                     CheckResult(
-                        phone_number=num, status=CheckStatus.ERROR, details="No result"
+                        phone_number=num,
+                        status=CheckStatus.ERROR,
+                        details="No result",
+                        services=[ServiceResult(service=service, status=CheckStatus.ERROR, details="No result")],
                     )
                 )
 
@@ -209,7 +233,10 @@ async def _run_check_gc(
         for r in raw:
             results.append(
                 CheckResult(
-                    phone_number=r.phone_number, status=r.status, details=r.details
+                    phone_number=r.phone_number,
+                    status=r.status,
+                    details=r.details,
+                    services=[ServiceResult(service="getcontact", status=r.status, details=r.details)],
                 )
             )
 
@@ -225,6 +252,207 @@ async def _run_check_gc(
             await asyncio.to_thread(checker.close_app)
 
 
+# =============================================================================
+# 3. Tbank
+# =============================================================================
+async def _run_check_tbank(
+    job_id: str,
+    numbers: List[str],
+    job_manager: JobManager,
+) -> None:
+    logger.info("Job %s started for %d numbers via tbank", job_id, len(numbers))
+    start_ts = asyncio.get_event_loop().time()
+    checker_cls = get_checker_class("tbank")
+    checker: Optional[PhoneChecker] = None
+    results: List[CheckResult] = []
+
+    try:
+        checker = await asyncio.to_thread(checker_cls, "")
+        launched = await asyncio.to_thread(checker.launch_app)
+        if not launched:
+            raise RuntimeError("Failed to init Tbank checker")
+
+        raw: List[PhoneCheckResult] = await asyncio.to_thread(
+            lambda: [checker.check_number(n) for n in numbers]
+        )
+
+        for r in raw:
+            results.append(
+                CheckResult(
+                    phone_number=r.phone_number,
+                    status=r.status,
+                    details=r.details,
+                    services=[ServiceResult(service="tbank", status=r.status, details=r.details)],
+                )
+            )
+
+    except Exception as e:
+        logger.error("Job %s failed: %s", job_id, e)
+        _fail_job(job_id, str(e), job_manager)
+    else:
+        _complete_job(job_id, results, job_manager)
+        duration = asyncio.get_event_loop().time() - start_ts
+        logger.info("Job %s completed in %.2fs", job_id, duration)
+    finally:
+        if checker:
+            await asyncio.to_thread(checker.close_app)
+
+
+# =============================================================================
+# 4. Auto mode combining multiple services
+# =============================================================================
+async def _run_check_auto(
+    job_id: str,
+    numbers: List[str],
+    job_manager: JobManager,
+    *,
+    kasp_device: Optional[str] = None,
+    tc_device: Optional[str] = None,
+    gc_device: Optional[str] = None,
+) -> None:
+    logger.info("Job %s started for %d numbers via auto", job_id, len(numbers))
+    start_ts = asyncio.get_event_loop().time()
+
+    kasp_cls = get_checker_class("kaspersky")
+    tc_cls = get_checker_class("truecaller")
+    gc_cls = get_checker_class("getcontact")
+    tb_cls = get_checker_class("tbank")
+
+    kasp_checker = tc_checker = gc_checker = tb_checker = None
+    service_map: Dict[str, Dict[str, PhoneCheckResult]] = {n: {} for n in numbers}
+
+    ru_mask = re.compile(r"^(?:\+?7|8)\d{10}$")
+    ru_nums_orig = [n for n in numbers if ru_mask.match(n)]
+    intl_nums_orig = [n for n in numbers if n not in ru_nums_orig]
+
+    kasp_nums = [n.lstrip("+") for n in ru_nums_orig]
+    gc_nums = ru_nums_orig
+    tb_nums = [n.lstrip("+") for n in ru_nums_orig]
+    tc_nums = [n.lstrip("+") for n in intl_nums_orig]
+
+    try:
+        async def run_kaspersky() -> Dict[str, PhoneCheckResult]:
+            nonlocal kasp_checker
+            res: Dict[str, PhoneCheckResult] = {}
+            kasp_device_addr = kasp_device or f"{settings.kasp_adb_host}:{settings.kasp_adb_port}"
+            await asyncio.to_thread(_ping_device, *kasp_device_addr.split(":"))
+            kasp_checker = await asyncio.to_thread(kasp_cls, kasp_device_addr)
+            launched = await asyncio.to_thread(kasp_checker.launch_app)
+            if not launched:
+                raise RuntimeError("Failed to launch Kaspersky Who Calls")
+            raw = await asyncio.to_thread(lambda: [kasp_checker.check_number(n) for n in kasp_nums])
+            for orig, r in zip(ru_nums_orig, raw):
+                res[orig] = r
+            return res
+
+        async def run_getcontact() -> Dict[str, PhoneCheckResult]:
+            nonlocal gc_checker
+            res: Dict[str, PhoneCheckResult] = {}
+            gc_device_addr = gc_device or f"{settings.gc_adb_host}:{settings.gc_adb_port}"
+            await asyncio.to_thread(_ping_device, *gc_device_addr.split(":"))
+            gc_checker = await asyncio.to_thread(gc_cls, gc_device_addr)
+            launched = await asyncio.to_thread(gc_checker.launch_app)
+            if not launched:
+                raise RuntimeError("Failed to launch GetContact")
+            raw = await asyncio.to_thread(lambda: [gc_checker.check_number(n) for n in gc_nums])
+            for orig, r in zip(gc_nums, raw):
+                res[orig] = r
+            return res
+
+        async def run_tbank() -> Dict[str, PhoneCheckResult]:
+            nonlocal tb_checker
+            res: Dict[str, PhoneCheckResult] = {}
+            tb_checker = await asyncio.to_thread(tb_cls, "")
+            launched = await asyncio.to_thread(tb_checker.launch_app)
+            if not launched:
+                raise RuntimeError("Failed to init Tbank checker")
+            raw = await asyncio.to_thread(lambda: [tb_checker.check_number(n) for n in tb_nums])
+            for orig, r in zip(ru_nums_orig, raw):
+                res[orig] = r
+            return res
+
+        async def run_truecaller() -> Dict[str, PhoneCheckResult]:
+            nonlocal tc_checker
+            res: Dict[str, PhoneCheckResult] = {}
+            tc_device_addr = tc_device or f"{settings.tc_adb_host}:{settings.tc_adb_port}"
+            await asyncio.to_thread(_ping_device, *tc_device_addr.split(":"))
+            tc_checker = await asyncio.to_thread(tc_cls, tc_device_addr)
+            launched = await asyncio.to_thread(tc_checker.launch_app)
+            if not launched:
+                raise RuntimeError("Failed to launch Truecaller")
+            raw = await asyncio.to_thread(lambda: [tc_checker.check_number(n) for n in tc_nums])
+            for orig, r in zip(intl_nums_orig, raw):
+                res[orig] = r
+            return res
+
+        tasks: List[tuple[str, asyncio.Future]] = []
+        if kasp_nums:
+            tasks.append(("kaspersky", asyncio.create_task(run_kaspersky())))
+        if gc_nums:
+            tasks.append(("getcontact", asyncio.create_task(run_getcontact())))
+        if tb_nums:
+            tasks.append(("tbank", asyncio.create_task(run_tbank())))
+        if tc_nums:
+            tasks.append(("truecaller", asyncio.create_task(run_truecaller())))
+
+        for svc, fut in tasks:
+            mapping = await fut
+            for orig, r in mapping.items():
+                service_map[orig][svc] = r
+
+        def pick_best(phone: str, items: Dict[str, PhoneCheckResult]) -> CheckResult:
+            priority = {
+                CheckStatus.SPAM: 4,
+                CheckStatus.SAFE: 3,
+                CheckStatus.NOT_IN_DB: 2,
+                CheckStatus.UNKNOWN: 1,
+                CheckStatus.ERROR: 0,
+            }
+            best = None
+            for r in items.values():
+                if best is None or priority[r.status] > priority[best.status]:
+                    best = r
+            if not best:
+                services = []
+            else:
+                services = [
+                    ServiceResult(service=s, status=res.status, details=res.details)
+                    for s, res in items.items()
+                ]
+            if not best:
+                return CheckResult(
+                    phone_number=phone,
+                    status=CheckStatus.ERROR,
+                    details="No result",
+                    services=services,
+                )
+            return CheckResult(
+                phone_number=phone,
+                status=best.status,
+                details=best.details,
+                services=services,
+            )
+
+        final_results = [pick_best(num, service_map[num]) for num in numbers]
+
+    except Exception as e:
+        logger.error("Job %s failed: %s", job_id, e)
+        _fail_job(job_id, str(e), job_manager)
+    else:
+        _complete_job(job_id, final_results, job_manager)
+        duration = asyncio.get_event_loop().time() - start_ts
+        logger.info("Job %s completed in %.2fs", job_id, duration)
+    finally:
+        if kasp_checker:
+            await asyncio.to_thread(kasp_checker.close_app)
+        if tc_checker:
+            await asyncio.to_thread(tc_checker.close_app)
+        if gc_checker:
+            await asyncio.to_thread(gc_checker.close_app)
+        if tb_checker:
+            await asyncio.to_thread(tb_checker.close_app)
+
+
 # Helper functions
 
 def _ping_device(host: str, port: str, timeout: int = 5) -> None:
@@ -237,27 +465,41 @@ def _ping_device(host: str, port: str, timeout: int = 5) -> None:
         raise DeviceConnectionError(f"Cannot reach device {host}:{port}: {e}") from e
 
 
-def _devices_for_service(service: str) -> List[str]:
+def _devices_for_service(service: str, numbers: Optional[List[str]] = None) -> List[str]:
     if service == "kaspersky":
         return ["kaspersky"]
     if service == "truecaller":
         return ["truecaller"]
     if service == "getcontact":
         return ["getcontact"]
-    # auto uses kaspersky and truecaller devices
-    return ["kaspersky", "truecaller"]
+    if service == "tbank":
+        return ["tbank"]
+    # auto uses kaspersky, getcontact and tbank for Russian numbers;
+    # truecaller only if there are international numbers
+    if numbers is None:
+        return ["kaspersky", "truecaller", "getcontact", "tbank"]
+
+    ru_mask = re.compile(r"^(?:\+?7|8)\d{10}$")
+    devs = ["kaspersky", "getcontact", "tbank"]
+    if any(not ru_mask.match(n) for n in numbers):
+        devs.append("truecaller")
+    return devs
 
 
-def _ensure_no_running(service: str, job_manager: JobManager) -> None:
+def _ensure_no_running(
+    service: str, job_manager: JobManager, numbers: Optional[List[str]] = None
+) -> None:
     try:
-        for dev in _devices_for_service(service):
+        for dev in _devices_for_service(service, numbers):
             job_manager.ensure_no_running(dev)
     except JobAlreadyRunningError as e:
         raise HTTPException(status_code=429, detail=str(e)) from e
 
 
-def _new_job(service: str, job_manager: JobManager) -> str:
-    job_id = job_manager.new_job(_devices_for_service(service))
+def _new_job(
+    service: str, job_manager: JobManager, numbers: Optional[List[str]] = None
+) -> str:
+    job_id = job_manager.new_job(_devices_for_service(service, numbers))
     logger.debug("Created job %s", job_id)
     return job_id
 

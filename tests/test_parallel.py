@@ -45,8 +45,8 @@ async def test_parallel_checks(monkeypatch):
     }
     api.app.state.device_pools = pools
 
-    j1 = api.jobs._new_job("kaspersky", manager)
-    j2 = api.jobs._new_job("kaspersky", manager)
+    j1 = api.jobs._new_job("kaspersky", manager, ["111"])
+    j2 = api.jobs._new_job("kaspersky", manager, ["222"])
 
     workers = [asyncio.create_task(api.jobs._worker(api.app)) for _ in range(2)]
     await api.jobs.enqueue_job(j1, ["111"], "kaspersky", api.app)
@@ -94,8 +94,8 @@ async def test_worker_recovers_on_error(monkeypatch):
 
     api.app.state.device_pools = FaultyPools(pools)
 
-    j1 = api.jobs._new_job("kaspersky", manager)
-    j2 = api.jobs._new_job("kaspersky", manager)
+    j1 = api.jobs._new_job("kaspersky", manager, ["111"])
+    j2 = api.jobs._new_job("kaspersky", manager, ["222"])
 
     worker = asyncio.create_task(api.jobs._worker(api.app))
     await api.jobs.enqueue_job(j1, ["111"], "kaspersky", api.app)

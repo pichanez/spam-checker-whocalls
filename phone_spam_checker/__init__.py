@@ -6,6 +6,7 @@ from .infrastructure import (
     KasperskyWhoCallsChecker,
     TruecallerChecker,
     GetContactChecker,
+    TbankChecker,
 )
 from .job_manager import (
     JobManager,
@@ -27,6 +28,7 @@ __all__ = [
     "KasperskyWhoCallsChecker",
     "TruecallerChecker",
     "GetContactChecker",
+    "TbankChecker",
     "JobManager",
     "JobRepository",
     "SQLiteJobRepository",
