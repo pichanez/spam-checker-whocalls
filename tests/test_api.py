@@ -207,3 +207,13 @@ def test_job_already_running(monkeypatch):
     )
     assert response.status_code == 429
     assert "in progress" in response.json()["detail"]
+
+
+def test_invalid_phone_number():
+    client = TestClient(api.app)
+    response = client.post(
+        "/check_numbers",
+        json={"numbers": ["abc"], "service": "kaspersky"},
+        headers={"X-API-Key": api.settings.api_key},
+    )
+    assert response.status_code == 422
