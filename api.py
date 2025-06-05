@@ -39,7 +39,7 @@ async def get_api_key(api_key: str = Security(api_key_header)) -> str:
     return api_key
 
 
-configure_logging(level=settings.log_level)
+configure_logging(level=settings.log_level, log_file=settings.log_file)
 logger = logging.getLogger(__name__)
 
 job_manager = JobManager(settings.job_db_path)
@@ -98,6 +98,10 @@ async def start_cleanup_task() -> None:
 # ═════════════════════════════════════════════════════════════════════════════
 async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
     numbers = [num.lstrip("+") for num in numbers]
+    logger.info(
+        "Job %s started for %d numbers via %s", job_id, len(numbers), service
+    )
+    start_ts = asyncio.get_event_loop().time()
 
     if service == "kaspersky":
         kasp_nums = numbers
@@ -152,9 +156,12 @@ async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
                 results.append(CheckResult(phone_number=num, status="Error", details="No result"))
 
     except Exception as e:
+        logger.error("Job %s failed: %s", job_id, e)
         _fail_job(job_id, str(e))
     else:
         _complete_job(job_id, results)
+        duration = asyncio.get_event_loop().time() - start_ts
+        logger.info("Job %s completed in %.2fs", job_id, duration)
     finally:
         if kasp_checker:
             await loop.run_in_executor(None, kasp_checker.close_app)
@@ -169,6 +176,8 @@ async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
     # GetContact will add '+' itself; remove duplicates
     uniq_numbers = list(dict.fromkeys(numbers))  # preserve order
     gc_device = f"{settings.gc_adb_host}:{settings.gc_adb_port}"
+    logger.info("Job %s started for %d numbers via getcontact", job_id, len(numbers))
+    start_ts = asyncio.get_event_loop().time()
     checker_cls = get_checker_class("getcontact")
     checker: Optional[PhoneChecker] = None
     results: List[CheckResult] = []
@@ -191,9 +200,12 @@ async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
             )
 
     except Exception as e:
+        logger.error("Job %s failed: %s", job_id, e)
         _fail_job(job_id, str(e))
     else:
         _complete_job(job_id, results)
+        duration = asyncio.get_event_loop().time() - start_ts
+        logger.info("Job %s completed in %.2fs", job_id, duration)
     finally:
         if checker:
             await loop.run_in_executor(None, checker.close_app)
@@ -208,6 +220,12 @@ def submit_check(
 ) -> JobResponse:
     _ensure_no_running()
     job_id = _new_job()
+    logger.info(
+        "Received job %s: %d numbers via %s",
+        job_id,
+        len(request.numbers),
+        request.service,
+    )
     if request.service == "getcontact":
         background_tasks.add_task(_run_check_gc, job_id, request.numbers)
     elif request.service in {"auto", "kaspersky", "truecaller"}:
@@ -234,10 +252,12 @@ def get_status(job_id: str, _: str = Depends(get_api_key)) -> StatusResponse:
 
 # --- helper functions --------------------------------------------------------
 def _ping_device(host: str, port: str, timeout: int = 5) -> None:
+    logger.debug("Pinging device %s:%s", host, port)
     try:
         with socket.create_connection((host, int(port)), timeout=timeout):
-            pass
+            logger.debug("Device %s:%s is reachable", host, port)
     except Exception as e:
+        logger.error("Device %s:%s unreachable: %s", host, port, e)
         raise RuntimeError(f"Cannot reach device {host}:{port}: {e}") from e
 
 
@@ -246,12 +266,16 @@ def _ensure_no_running() -> None:
 
 
 def _new_job() -> str:
-    return job_manager.new_job()
+    job_id = job_manager.new_job()
+    logger.debug("Created job %s", job_id)
+    return job_id
 
 
 def _complete_job(job_id: str, results: List[CheckResult]) -> None:
+    logger.debug("Marking job %s as completed", job_id)
     job_manager.complete_job(job_id, results)
 
 
 def _fail_job(job_id: str, error: str) -> None:
+    logger.debug("Marking job %s as failed: %s", job_id, error)
     job_manager.fail_job(job_id, error)
