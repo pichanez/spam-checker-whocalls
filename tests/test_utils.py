@@ -9,6 +9,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from phone_spam_checker.logging_config import configure_logging
+from phone_spam_checker.config import settings
+
+configure_logging(
+    level=settings.log_level,
+    fmt=settings.log_format,
+    log_file=settings.log_file,
+)
+
 from phone_spam_checker.utils import read_phone_list, write_results  # noqa: E402
 from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus  # noqa: E402
 
@@ -21,7 +30,9 @@ def test_read_phone_list(tmp_path: Path) -> None:
 
 def test_write_results(tmp_path: Path) -> None:
     file = tmp_path / "out.csv"
-    results = [PhoneCheckResult(phone_number="123", status=CheckStatus.SPAM, details="bad")]
+    results = [
+        PhoneCheckResult(phone_number="123", status=CheckStatus.SPAM, details="bad")
+    ]
     write_results(file, results)
     with file.open(encoding="utf-8") as f:
         reader = list(csv.DictReader(f))

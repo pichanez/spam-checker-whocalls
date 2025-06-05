@@ -57,7 +57,11 @@ def parse_common_args(
 
 def run_checker(service: str, argv: list[str] | None = None) -> int:
     """Run a checker identified by name with CLI arguments."""
-    configure_logging(level=settings.log_level)
+    configure_logging(
+        level=settings.log_level,
+        fmt=settings.log_format,
+        log_file=settings.log_file,
+    )
     args = parse_common_args(argv, description=f"Phone number lookup via {service}")
 
     if not args.input.exists():
