@@ -17,6 +17,7 @@ os.environ.setdefault("API_KEY", "testkey")
 
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
+from phone_spam_checker.job_manager import JobRepository, JobManager
 
 configure_logging(
     level=settings.log_level,
@@ -27,7 +28,7 @@ configure_logging(
 import api
 
 
-class DummyJobManager:
+class DummyRepository(JobRepository):
     def __init__(self, job_data=None):
         self.job_data = job_data or {}
 
@@ -56,9 +57,12 @@ class DummyJobManager:
             "created_at": datetime.utcnow(),
         }
 
+    def cleanup(self):
+        pass
+
 
 def test_submit_check(monkeypatch):
-    monkeypatch.setattr(api, "job_manager", DummyJobManager())
+    monkeypatch.setattr(api, "job_manager", JobManager(DummyRepository()))
     monkeypatch.setattr(api, "_new_job", lambda: "job123")
     called = {}
 
@@ -89,7 +93,7 @@ def test_get_status(monkeypatch):
             "created_at": datetime.utcnow(),
         }
     }
-    monkeypatch.setattr(api, "job_manager", DummyJobManager(job_data))
+    monkeypatch.setattr(api, "job_manager", JobManager(DummyRepository(job_data)))
 
     client = TestClient(api.app)
     response = client.get(
@@ -111,7 +115,7 @@ async def _dummy_run_check(job_id, numbers, service):
 
 
 def test_background_task_completion(monkeypatch):
-    manager = DummyJobManager()
+    manager = JobManager(DummyRepository())
     monkeypatch.setattr(api, "job_manager", manager)
     monkeypatch.setattr(api, "_new_job", lambda: "job123")
 
@@ -154,7 +158,7 @@ def test_job_failed_when_device_unreachable(monkeypatch):
     def failing_ping(host, port, timeout=5):
         raise api.DeviceConnectionError("boom")
 
-    manager = DummyJobManager()
+    manager = JobManager(DummyRepository())
     monkeypatch.setattr(api, "job_manager", manager)
     monkeypatch.setattr(api, "_new_job", lambda: "job123")
     monkeypatch.setattr(api, "_ping_device", failing_ping)
