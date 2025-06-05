@@ -55,7 +55,7 @@ adb connect ${GC_ADB_HOST}:${GC_ADB_PORT}
 
 ## Tests
 
-Run the unit tests with:
+Run the unit tests (requires the optional dependency `httpx` for API tests) with:
 
 ```bash
 pytest -q
