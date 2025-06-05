@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from .auth import login, get_token
 from .schemas import CheckRequest, CheckResult, JobResponse, StatusResponse
@@ -16,6 +16,7 @@ router.post("/login")(login)
 def submit_check(
     request: CheckRequest,
     background_tasks: BackgroundTasks,
+    http_request: Request,
     _: str = Depends(get_token),
     job_manager: JobManager = Depends(get_job_manager),
 ) -> JobResponse:
@@ -26,7 +27,9 @@ def submit_check(
     if request.service not in {"auto", "kaspersky", "truecaller", "getcontact"}:
         raise HTTPException(status_code=400, detail="Unknown service")
 
-    background_tasks.add_task(jobs.enqueue_job, job_id, request.numbers, request.service)
+    background_tasks.add_task(
+        jobs.enqueue_job, job_id, request.numbers, request.service, http_request.app
+    )
     return JobResponse(job_id=job_id)
 
 

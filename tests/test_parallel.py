@@ -13,8 +13,6 @@ configure_logging(level=settings.log_level, fmt=settings.log_format, log_file=se
 
 from phone_spam_checker import api
 from phone_spam_checker.job_manager import JobManager, SQLiteJobRepository
-from phone_spam_checker.dependencies import get_job_manager, get_device_pool
-import phone_spam_checker.dependencies as deps
 from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.device_pool import DevicePool
@@ -35,12 +33,8 @@ class DummyChecker(PhoneChecker):
 async def test_parallel_checks(monkeypatch):
     repo = SQLiteJobRepository(":memory:")
     manager = JobManager(repo)
-    api.app.dependency_overrides[get_job_manager] = lambda: manager
-    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
-    monkeypatch.setattr(api.jobs, "get_job_manager", lambda: manager)
-    deps._job_manager = manager
-    api.jobs.job_queue = asyncio.Queue()
-    deps._job_queue = api.jobs.job_queue
+    api.app.state.job_manager = manager
+    api.app.state.job_queue = asyncio.Queue()
     monkeypatch.setattr(api.jobs, "get_checker_class", lambda name: DummyChecker)
     monkeypatch.setattr(api.jobs, "_ping_device", lambda *a, **kw: None)
 
@@ -49,16 +43,15 @@ async def test_parallel_checks(monkeypatch):
         "truecaller": DevicePool([]),
         "getcontact": DevicePool([]),
     }
-    monkeypatch.setattr(deps, "get_device_pool", lambda service: pools[service])
-    monkeypatch.setattr(api.jobs, "get_device_pool", lambda service: pools[service])
+    api.app.state.device_pools = pools
 
     j1 = api.jobs._new_job("kaspersky", manager)
     j2 = api.jobs._new_job("kaspersky", manager)
 
-    workers = [asyncio.create_task(api.jobs._worker()) for _ in range(2)]
-    await api.jobs.enqueue_job(j1, ["111"], "kaspersky")
-    await api.jobs.enqueue_job(j2, ["222"], "kaspersky")
-    await api.jobs.job_queue.join()
+    workers = [asyncio.create_task(api.jobs._worker(api.app)) for _ in range(2)]
+    await api.jobs.enqueue_job(j1, ["111"], "kaspersky", api.app)
+    await api.jobs.enqueue_job(j2, ["222"], "kaspersky", api.app)
+    await api.app.state.job_queue.join()
 
     for w in workers:
         w.cancel()
@@ -75,12 +68,8 @@ async def test_parallel_checks(monkeypatch):
 async def test_worker_recovers_on_error(monkeypatch):
     repo = SQLiteJobRepository(":memory:")
     manager = JobManager(repo)
-    api.app.dependency_overrides[get_job_manager] = lambda: manager
-    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
-    monkeypatch.setattr(api.jobs, "get_job_manager", lambda: manager)
-    deps._job_manager = manager
-    api.jobs.job_queue = asyncio.Queue()
-    deps._job_queue = api.jobs.job_queue
+    api.app.state.job_manager = manager
+    api.app.state.job_queue = asyncio.Queue()
     monkeypatch.setattr(api.jobs, "get_checker_class", lambda name: DummyChecker)
     monkeypatch.setattr(api.jobs, "_ping_device", lambda *a, **kw: None)
 
@@ -92,22 +81,26 @@ async def test_worker_recovers_on_error(monkeypatch):
 
     counter = {"n": 0}
 
-    def faulty_pool(service: str):
-        if counter["n"] == 0:
-            counter["n"] += 1
-            raise RuntimeError("boom")
-        return pools[service]
+    class FaultyPools(dict):
+        def __init__(self, data):
+            super().__init__(data)
+            self.n = 0
 
-    monkeypatch.setattr(deps, "get_device_pool", faulty_pool)
-    monkeypatch.setattr(api.jobs, "get_device_pool", faulty_pool)
+        def __getitem__(self, key):
+            if self.n == 0:
+                self.n += 1
+                raise RuntimeError("boom")
+            return super().__getitem__(key)
+
+    api.app.state.device_pools = FaultyPools(pools)
 
     j1 = api.jobs._new_job("kaspersky", manager)
     j2 = api.jobs._new_job("kaspersky", manager)
 
-    worker = asyncio.create_task(api.jobs._worker())
-    await api.jobs.enqueue_job(j1, ["111"], "kaspersky")
-    await api.jobs.enqueue_job(j2, ["222"], "kaspersky")
-    await api.jobs.job_queue.join()
+    worker = asyncio.create_task(api.jobs._worker(api.app))
+    await api.jobs.enqueue_job(j1, ["111"], "kaspersky", api.app)
+    await api.jobs.enqueue_job(j2, ["222"], "kaspersky", api.app)
+    await api.app.state.job_queue.join()
 
     worker.cancel()
     with contextlib.suppress(asyncio.CancelledError):
