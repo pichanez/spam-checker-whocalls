@@ -61,6 +61,14 @@ class DummyRepository(JobRepository):
         pass
 
 
+class DummyJobManager(JobManager):
+    def __init__(self):
+        super().__init__(DummyRepository())
+
+    def ensure_no_running(self) -> None:
+        pass
+
+
 def test_submit_check(monkeypatch):
     monkeypatch.setattr(api, "job_manager", JobManager(DummyRepository()))
     monkeypatch.setattr(api, "_new_job", lambda: "job123")
