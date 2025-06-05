@@ -8,7 +8,7 @@ from phone_spam_checker.validators import validate_phone_number
 
 class CheckRequest(BaseModel):
     numbers: List[str]
-    service: str = "auto"  # 'auto', 'kaspersky', 'truecaller', 'getcontact'
+    service: str = "auto"  # 'auto', 'kaspersky', 'truecaller', 'getcontact', 'tbank'
 
     @field_validator("numbers")
     @classmethod

@@ -35,8 +35,10 @@ def register_default_checkers() -> None:
         KasperskyWhoCallsChecker,
         TruecallerChecker,
         GetContactChecker,
+        TbankChecker,
     )
 
     register_checker("kaspersky", KasperskyWhoCallsChecker)
     register_checker("truecaller", TruecallerChecker)
     register_checker("getcontact", GetContactChecker)
+    register_checker("tbank", TbankChecker)
