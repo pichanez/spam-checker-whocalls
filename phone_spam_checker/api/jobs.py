@@ -57,6 +57,9 @@ async def _worker() -> None:
                     )
         except JobAlreadyRunningError as exc:
             _fail_job(job_id, str(exc), job_manager)
+        except Exception as exc:  # pragma: no cover - unexpected errors
+            logger.exception("Worker error for job %s", job_id)
+            _fail_job(job_id, str(exc), job_manager)
         finally:
             job_queue.task_done()
 
