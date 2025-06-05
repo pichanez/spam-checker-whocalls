@@ -280,3 +280,16 @@ def test_multiple_jobs(monkeypatch):
     assert manager.get_job("job1")["status"] == "completed"
     assert manager.get_job("job2")["status"] == "completed"
     api.app.dependency_overrides.clear()
+
+
+def test_expired_token(monkeypatch):
+    monkeypatch.setattr(settings, "token_ttl_hours", -1)
+    api.app.dependency_overrides[get_job_manager] = lambda: JobManager(DummyRepository())
+    client = TestClient(api.app)
+    resp = client.post("/login", headers={"X-API-Key": settings.api_key})
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    r = client.get("/status/job123", headers=headers)
+    assert r.status_code == 403
+    api.app.dependency_overrides.clear()
+    monkeypatch.setattr(settings, "token_ttl_hours", 1)
