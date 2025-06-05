@@ -14,7 +14,12 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 def _create_token() -> str:
     expires = datetime.utcnow() + timedelta(hours=settings.token_ttl_hours)
-    payload = {"sub": "api", "exp": expires}
+    payload = {
+        "sub": "api",
+        "exp": expires,
+        "aud": settings.token_audience,
+        "iss": settings.token_issuer,
+    }
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
 
@@ -29,13 +34,21 @@ async def get_token(
 ) -> str:
     if credentials is None:
         raise HTTPException(status_code=403, detail="Forbidden")
-    try:
-        jwt.decode(
-            credentials.credentials,
-            settings.secret_key,
-            algorithms=["HS256"],
-            options={"verify_exp": True},
-        )
-    except PyJWTError:
+    decode_kwargs = {
+        "algorithms": ["HS256"],
+        "options": {"verify_exp": True},
+    }
+    if settings.token_audience:
+        decode_kwargs["audience"] = settings.token_audience
+    if settings.token_issuer:
+        decode_kwargs["issuer"] = settings.token_issuer
+
+    for key in settings.secret_keys:
+        try:
+            jwt.decode(credentials.credentials, key, **decode_kwargs)
+            break
+        except PyJWTError:
+            continue
+    else:
         raise HTTPException(status_code=403, detail="Invalid token")
     return credentials.credentials

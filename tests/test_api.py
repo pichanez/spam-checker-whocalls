@@ -1,9 +1,10 @@
 import asyncio
 from datetime import datetime
+import jwt
 
 import pytest
 from fastapi.testclient import TestClient
-from fastapi import Depends
+from fastapi import Depends, Request
 
 import sys
 import types
@@ -81,11 +82,14 @@ def _auth_header(client: TestClient) -> dict[str, str]:
 
 
 def test_submit_check(monkeypatch):
-    api.app.dependency_overrides[get_job_manager] = lambda: JobManager(DummyRepository())
+    def override(request: Request):
+        return JobManager(DummyRepository())
+
+    api.app.dependency_overrides[get_job_manager] = override
     monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: "job123")
     called = {}
 
-    async def fake_enqueue(job_id, numbers, service):
+    async def fake_enqueue(job_id, numbers, service, app):
         called["task"] = (job_id, numbers, service)
 
     monkeypatch.setattr(api.jobs, "enqueue_job", fake_enqueue)
@@ -114,7 +118,10 @@ def test_get_status(monkeypatch):
             "created_at": datetime.utcnow(),
         }
     }
-    api.app.dependency_overrides[get_job_manager] = lambda: JobManager(DummyRepository(job_data))
+    def override(request: Request):
+        return JobManager(DummyRepository(job_data))
+
+    api.app.dependency_overrides[get_job_manager] = override
 
     client = TestClient(api.app)
     headers = _auth_header(client)
@@ -129,8 +136,7 @@ def test_get_status(monkeypatch):
     api.app.dependency_overrides.clear()
 
 
-async def _dummy_run_check(job_id, numbers, service):
-    manager = get_job_manager()
+async def _dummy_run_check(job_id, numbers, service, manager):
     results = [
         api.CheckResult(phone_number=n, status=api.CheckStatus.SAFE) for n in numbers
     ]
@@ -139,14 +145,15 @@ async def _dummy_run_check(job_id, numbers, service):
 
 def test_background_task_completion(monkeypatch):
     manager = JobManager(DummyRepository())
-    api.app.dependency_overrides[get_job_manager] = lambda: manager
-    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
-    deps._job_manager = manager
-    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
+    api.app.state.job_manager = manager
+    def override(request: Request):
+        return manager
+
+    api.app.dependency_overrides[get_job_manager] = override
     monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: "job123")
 
-    async def immediate(job_id, numbers, service):
-        await _dummy_run_check(job_id, numbers, service)
+    async def immediate(job_id, numbers, service, app):
+        await _dummy_run_check(job_id, numbers, service, manager)
 
     monkeypatch.setattr(api.jobs, "enqueue_job", immediate)
 
@@ -188,13 +195,15 @@ def test_job_failed_when_device_unreachable(monkeypatch):
         raise DeviceConnectionError("boom")
 
     manager = JobManager(DummyRepository())
-    api.app.dependency_overrides[get_job_manager] = lambda: manager
-    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
-    deps._job_manager = manager
+    api.app.state.job_manager = manager
+    def override(request: Request):
+        return manager
+
+    api.app.dependency_overrides[get_job_manager] = override
     monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: "job123")
     monkeypatch.setattr(api.jobs, "_ping_device", failing_ping)
 
-    async def immediate(job_id, numbers, service):
+    async def immediate(job_id, numbers, service, app):
         if service == "getcontact":
             await api.jobs._run_check_gc(job_id, numbers, manager)
         else:
@@ -246,9 +255,11 @@ def test_invalid_phone_number():
 
 def test_multiple_jobs(monkeypatch):
     manager = JobManager(DummyRepository())
-    api.app.dependency_overrides[get_job_manager] = lambda: manager
-    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
-    deps._job_manager = manager
+    api.app.state.job_manager = manager
+    def override(request: Request):
+        return manager
+
+    api.app.dependency_overrides[get_job_manager] = override
     ids = ["job1", "job2"]
 
     def gen_id(service):
@@ -256,8 +267,8 @@ def test_multiple_jobs(monkeypatch):
 
     monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: gen_id(service))
 
-    async def immediate(job_id, numbers, service):
-        await _dummy_run_check(job_id, numbers, service)
+    async def immediate(job_id, numbers, service, app):
+        await _dummy_run_check(job_id, numbers, service, manager)
 
     monkeypatch.setattr(api.jobs, "enqueue_job", immediate)
 
@@ -284,7 +295,10 @@ def test_multiple_jobs(monkeypatch):
 
 def test_expired_token(monkeypatch):
     monkeypatch.setattr(settings, "token_ttl_hours", -1)
-    api.app.dependency_overrides[get_job_manager] = lambda: JobManager(DummyRepository())
+    def override(request: Request):
+        return JobManager(DummyRepository())
+
+    api.app.dependency_overrides[get_job_manager] = override
     client = TestClient(api.app)
     resp = client.post("/login", headers={"X-API-Key": settings.api_key})
     token = resp.json()["access_token"]
@@ -293,3 +307,19 @@ def test_expired_token(monkeypatch):
     assert r.status_code == 403
     api.app.dependency_overrides.clear()
     monkeypatch.setattr(settings, "token_ttl_hours", 1)
+
+
+def test_token_contains_claims():
+    client = TestClient(api.app)
+    resp = client.post("/login", headers={"X-API-Key": settings.api_key})
+    token = resp.json()["access_token"]
+    payload = jwt.decode(
+        token,
+        settings.secret_key,
+        algorithms=["HS256"],
+        audience=settings.token_audience,
+        issuer=settings.token_issuer,
+    )
+    assert payload["aud"] == settings.token_audience
+    assert payload["iss"] == settings.token_issuer
+    assert payload["sub"] == "api"

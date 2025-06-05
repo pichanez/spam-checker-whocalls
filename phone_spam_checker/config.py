@@ -13,6 +13,9 @@ class Settings(BaseSettings):
 
     api_key: str
     secret_key: str
+    secret_keys: List[str] = []
+    token_audience: str = "phone_spam_checker"
+    token_issuer: str = "phone_spam_checker"
     kasp_adb_host: str = "127.0.0.1"
     kasp_adb_port: str = "5555"
     tc_adb_host: str = "127.0.0.1"
@@ -28,6 +31,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     log_file: str | None = None
+    log_json: bool = False
+    log_max_bytes: int = 1048576
+    log_backup_count: int = 3
+    log_remote_host: str | None = None
+    log_remote_port: int = 0
     worker_count: int = 1
     token_ttl_hours: int = 1
     checker_modules: List[str] = []
@@ -43,6 +51,7 @@ class Settings(BaseSettings):
         "kasp_devices",
         "tc_devices",
         "gc_devices",
+        "secret_keys",
         mode="before",
     )
     @classmethod
@@ -58,6 +67,10 @@ class Settings(BaseSettings):
             self.tc_devices = [f"{self.tc_adb_host}:{self.tc_adb_port}"]
         if not self.gc_devices:
             self.gc_devices = [f"{self.gc_adb_host}:{self.gc_adb_port}"]
+        if not self.secret_keys:
+            self.secret_keys = [self.secret_key]
+        elif self.secret_key not in self.secret_keys:
+            self.secret_keys.insert(0, self.secret_key)
 
     @property
     def pg_dsn(self) -> str:

@@ -16,6 +16,9 @@ The application loads its configuration from environment variables. The most imp
 
 - `API_KEY` – token required to access the API.
 - `SECRET_KEY` – secret key used to sign JWT tokens.
+- `SECRET_KEYS` – optional comma-separated list of additional keys accepted when verifying JWTs.
+- `TOKEN_AUDIENCE` – expected audience claim for JWT tokens.
+- `TOKEN_ISSUER` – issuer claim for JWT tokens.
 - `KASP_ADB_HOST` / `KASP_ADB_PORT` – address of the device with Kaspersky Who Calls.
 - `TC_ADB_HOST` / `TC_ADB_PORT` – address of the device with Truecaller.
 - `GC_ADB_HOST` / `GC_ADB_PORT` – address of the device with GetContact.
@@ -29,6 +32,10 @@ The application loads its configuration from environment variables. The most imp
 - `LOG_LEVEL` – logging verbosity (e.g. `INFO`, `DEBUG`).
 - `LOG_FORMAT` – Python logging format string.
 - `LOG_FILE` – optional path to a file where logs will be written.
+- `LOG_JSON` – set to `1` for JSON log formatting.
+- `LOG_MAX_BYTES` – rotate `LOG_FILE` after this size (bytes).
+- `LOG_BACKUP_COUNT` – how many rotated log files to keep.
+- `LOG_REMOTE_HOST` / `LOG_REMOTE_PORT` – optional remote log collector.
 - `WORKER_COUNT` – how many background workers process jobs.
 - `TOKEN_TTL_HOURS` – lifetime of issued JWT tokens in hours.
 - `CHECKER_MODULES` – comma-separated list of modules with extra checkers.

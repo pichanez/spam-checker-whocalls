@@ -1,5 +1,6 @@
-from typing import Dict, Any
+from typing import Dict
 import asyncio
+from fastapi import FastAPI, Request
 
 from .config import settings
 from .device_pool import DevicePool
@@ -10,60 +11,52 @@ except Exception:  # pragma: no cover - optional dependency
     redis = None  # type: ignore
 from .job_manager import JobManager, SQLiteJobRepository, PostgresJobRepository
 
-_job_manager: JobManager | None = None
-_device_pools: Dict[str, DevicePool] = {}
-_job_queue: asyncio.Queue | RedisJobQueue | None = None
-_redis_client: Any | None = None  # redis.Redis when available
+def init_app(app: FastAPI) -> None:
+    """Create and store shared dependencies on the application."""
+    if settings.pg_host:
+        repo = PostgresJobRepository(settings.pg_dsn)
+    else:
+        repo = SQLiteJobRepository(settings.job_db_path)
+    app.state.job_manager = JobManager(repo)
 
-
-def get_job_manager() -> JobManager:
-    global _job_manager
-    if _job_manager is None:
-        if settings.pg_host:
-            repo = PostgresJobRepository(settings.pg_dsn)
-        else:
-            repo = SQLiteJobRepository(settings.job_db_path)
-        _job_manager = JobManager(repo)
-    return _job_manager
-
-
-def _get_redis() -> "redis.Redis":
-    global _redis_client
-    if _redis_client is None:
+    redis_client = None
+    if settings.use_redis:
         if redis is None:
             raise RuntimeError("redis package is required for distributed mode")
-        _redis_client = redis.Redis(
+        redis_client = redis.Redis(
             host=settings.redis_host,
             port=int(settings.redis_port),
             decode_responses=True,
         )
-    return _redis_client
+        app.state.redis_client = redis_client
 
+    if settings.use_redis:
+        job_queue: asyncio.Queue | RedisJobQueue = RedisJobQueue("job_queue", redis_client)  # type: ignore[arg-type]
+    else:
+        job_queue = asyncio.Queue()
+    app.state.job_queue = job_queue
 
-def get_device_pool(service: str) -> DevicePool:
-    global _device_pools
-    pool = _device_pools.get(service)
-    if pool is None:
-        devices_map = {
-            "kaspersky": settings.kasp_devices,
-            "truecaller": settings.tc_devices,
-            "getcontact": settings.gc_devices,
-        }
+    devices_map = {
+        "kaspersky": settings.kasp_devices,
+        "truecaller": settings.tc_devices,
+        "getcontact": settings.gc_devices,
+    }
+    pools: Dict[str, DevicePool] = {}
+    for svc, devs in devices_map.items():
         if settings.use_redis:
-            client = _get_redis()
-            pool = RedisDevicePool(f"pool:{service}", devices_map[service], client)
+            pools[svc] = RedisDevicePool(f"pool:{svc}", devs, redis_client)  # type: ignore[arg-type]
         else:
-            pool = DevicePool(devices_map[service])
-        _device_pools[service] = pool
-    return pool
+            pools[svc] = DevicePool(devs)
+    app.state.device_pools = pools
 
 
-def get_job_queue() -> asyncio.Queue | RedisJobQueue:
-    global _job_queue
-    if _job_queue is None:
-        if settings.use_redis:
-            client = _get_redis()
-            _job_queue = RedisJobQueue("job_queue", client)
-        else:
-            _job_queue = asyncio.Queue()
-    return _job_queue
+def get_job_manager(request: Request) -> JobManager:
+    return request.app.state.job_manager
+
+
+def get_job_queue(request: Request) -> asyncio.Queue | RedisJobQueue:
+    return request.app.state.job_queue
+
+
+def get_device_pool(service: str, request: Request) -> DevicePool:
+    return request.app.state.device_pools[service]
