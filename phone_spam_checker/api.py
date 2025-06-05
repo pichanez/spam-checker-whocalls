@@ -11,6 +11,7 @@ Run:
 import asyncio
 import re
 import socket
+import contextlib
 from typing import List, Dict, Optional, Any
 
 import logging
@@ -87,7 +88,6 @@ else:
 job_manager = JobManager(job_repo)
 job_queue: asyncio.Queue[tuple[str, List[str], str]] = asyncio.Queue()
 device_pools: Dict[str, DevicePool] = {}
-job_devices: Dict[str, Dict[str, str]] = {}
 
 
 async def enqueue_job(job_id: str, numbers: List[str], service: str) -> None:
@@ -98,21 +98,27 @@ async def enqueue_job(job_id: str, numbers: List[str], service: str) -> None:
 async def _worker() -> None:
     while True:
         job_id, numbers, service = await job_queue.get()
-        devices = job_devices.pop(job_id, {})
         try:
             if service == "getcontact":
-                await _run_check_gc(job_id, numbers, devices.get("getcontact"))
+                with device_pools["getcontact"] as gc_dev:
+                    await _run_check_gc(job_id, numbers, gc_dev)
             else:
-                await _run_check(
-                    job_id,
-                    numbers,
-                    service,
-                    kasp_device=devices.get("kaspersky"),
-                    tc_device=devices.get("truecaller"),
-                )
+                with contextlib.ExitStack() as stack:
+                    kasp_dev = tc_dev = None
+                    if service in {"kaspersky", "auto"}:
+                        kasp_dev = stack.enter_context(device_pools["kaspersky"])
+                    if service in {"truecaller", "auto"}:
+                        tc_dev = stack.enter_context(device_pools["truecaller"])
+                    await _run_check(
+                        job_id,
+                        numbers,
+                        service,
+                        kasp_device=kasp_dev,
+                        tc_device=tc_dev,
+                    )
+        except JobAlreadyRunningError as exc:
+            _fail_job(job_id, str(exc))
         finally:
-            for svc, dev in devices.items():
-                device_pools[svc].release(dev)
             job_queue.task_done()
 
 
@@ -402,21 +408,7 @@ def _ensure_no_running(service: str) -> None:
         raise HTTPException(status_code=429, detail=str(e)) from e
 
 def _new_job(service: str) -> str:
-    devices = {}
-    try:
-        if service in {"kaspersky", "auto"}:
-            devices["kaspersky"] = device_pools["kaspersky"].acquire()
-        if service in {"truecaller", "auto"}:
-            devices["truecaller"] = device_pools["truecaller"].acquire()
-        if service == "getcontact":
-            devices["getcontact"] = device_pools["getcontact"].acquire()
-    except JobAlreadyRunningError:
-        for svc, dev in devices.items():
-            device_pools[svc].release(dev)
-        raise
-
-    job_id = job_manager.new_job(list(devices.values()))
-    job_devices[job_id] = devices
+    job_id = job_manager.new_job(_devices_for_service(service))
     logger.debug("Created job %s", job_id)
     return job_id
 

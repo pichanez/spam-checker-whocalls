@@ -1,6 +1,7 @@
 from importlib import util
 from pathlib import Path
 import sys
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -39,3 +40,17 @@ def test_settings_env(monkeypatch):
     assert config.settings.secret_key == "xyz"
     assert config.settings.kasp_adb_host == "host"
     assert config.settings.kasp_adb_port == "1111"
+
+
+def test_missing_api_key(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("SECRET_KEY", "xyz")
+    with pytest.raises(RuntimeError):
+        load_config()
+
+
+def test_missing_secret_key(monkeypatch):
+    monkeypatch.setenv("API_KEY", "abc")
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    with pytest.raises(RuntimeError):
+        load_config()

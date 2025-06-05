@@ -45,7 +45,6 @@ async def test_parallel_checks(monkeypatch):
 
     j1 = api._new_job("kaspersky")
     j2 = api._new_job("kaspersky")
-    assert api.job_devices[j1]["kaspersky"] != api.job_devices[j2]["kaspersky"]
 
     workers = [asyncio.create_task(api._worker()) for _ in range(2)]
     await api.enqueue_job(j1, ["111"], "kaspersky")
@@ -59,4 +58,5 @@ async def test_parallel_checks(monkeypatch):
 
     assert manager.get_job(j1)["status"] == "completed"
     assert manager.get_job(j2)["status"] == "completed"
+    assert len(api.device_pools["kaspersky"]) == 2
 
