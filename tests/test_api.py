@@ -89,7 +89,7 @@ def test_submit_check(monkeypatch):
         return JobManager(DummyRepository())
 
     api.app.dependency_overrides[get_job_manager] = override
-    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: "job123")
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm, numbers=None: "job123")
     called = {}
 
     async def fake_enqueue(job_id, numbers, service, app):
@@ -153,7 +153,7 @@ def test_background_task_completion(monkeypatch):
         return manager
 
     api.app.dependency_overrides[get_job_manager] = override
-    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: "job123")
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm, numbers=None: "job123")
 
     async def immediate(job_id, numbers, service, app):
         await _dummy_run_check(job_id, numbers, service, manager)
@@ -203,7 +203,7 @@ def test_job_failed_when_device_unreachable(monkeypatch):
         return manager
 
     api.app.dependency_overrides[get_job_manager] = override
-    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: "job123")
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm, numbers=None: "job123")
     monkeypatch.setattr(api.jobs, "_ping_device", failing_ping)
 
     async def immediate(job_id, numbers, service, app):
@@ -229,7 +229,7 @@ def test_job_failed_when_device_unreachable(monkeypatch):
 
 
 def test_job_already_running(monkeypatch):
-    def busy_new_job(service, jm):
+    def busy_new_job(service, jm, numbers=None):
         raise JobAlreadyRunningError("Previous task is still in progress")
 
     monkeypatch.setattr(api.jobs, "_new_job", busy_new_job)
@@ -268,7 +268,7 @@ def test_multiple_jobs(monkeypatch):
     def gen_id(service):
         return ids.pop(0)
 
-    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: gen_id(service))
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm, numbers=None: gen_id(service))
 
     async def immediate(job_id, numbers, service, app):
         await _dummy_run_check(job_id, numbers, service, manager)
@@ -369,7 +369,7 @@ async def test_auto_returns_service_results(monkeypatch):
     }
     api.app.state.device_pools = pools
 
-    job_id = api.jobs._new_job("auto", manager)
+    job_id = api.jobs._new_job("auto", manager, ["79100000000", "+123"])
     await api.jobs._run_check_auto(job_id, ["79100000000", "+123"], manager)
     res = manager.get_job(job_id)["results"]
     assert res[0]["services"]
@@ -416,7 +416,7 @@ async def test_auto_russian_with_8(monkeypatch):
     }
     api.app.state.device_pools = pools
 
-    job_id = api.jobs._new_job("auto", manager)
+    job_id = api.jobs._new_job("auto", manager, ["89260000000"])
     await api.jobs._run_check_auto(job_id, ["89260000000"], manager)
     assert "truecaller" not in called
     res = manager.get_job(job_id)["results"][0]["services"]
@@ -433,9 +433,10 @@ def test_new_job_records_tbank():
             return super().new_job(devices)
 
     manager = JobManager(CaptureRepo())
-    job_id = api.jobs._new_job("auto", manager)
+    job_id = api.jobs._new_job("auto", manager, ["89100000000"])
     assert job_id == "job123"
     assert "tbank" in captured["devices"]
+    assert "truecaller" not in captured["devices"]
 
 
 def test_db_stores_unicode():

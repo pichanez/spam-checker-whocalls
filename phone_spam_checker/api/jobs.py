@@ -465,7 +465,7 @@ def _ping_device(host: str, port: str, timeout: int = 5) -> None:
         raise DeviceConnectionError(f"Cannot reach device {host}:{port}: {e}") from e
 
 
-def _devices_for_service(service: str) -> List[str]:
+def _devices_for_service(service: str, numbers: Optional[List[str]] = None) -> List[str]:
     if service == "kaspersky":
         return ["kaspersky"]
     if service == "truecaller":
@@ -474,20 +474,32 @@ def _devices_for_service(service: str) -> List[str]:
         return ["getcontact"]
     if service == "tbank":
         return ["tbank"]
-    # auto uses kaspersky, truecaller, getcontact and tbank resources
-    return ["kaspersky", "truecaller", "getcontact", "tbank"]
+    # auto uses kaspersky, getcontact and tbank for Russian numbers;
+    # truecaller only if there are international numbers
+    if numbers is None:
+        return ["kaspersky", "truecaller", "getcontact", "tbank"]
+
+    ru_mask = re.compile(r"^(?:\+?7|8)\d{10}$")
+    devs = ["kaspersky", "getcontact", "tbank"]
+    if any(not ru_mask.match(n) for n in numbers):
+        devs.append("truecaller")
+    return devs
 
 
-def _ensure_no_running(service: str, job_manager: JobManager) -> None:
+def _ensure_no_running(
+    service: str, job_manager: JobManager, numbers: Optional[List[str]] = None
+) -> None:
     try:
-        for dev in _devices_for_service(service):
+        for dev in _devices_for_service(service, numbers):
             job_manager.ensure_no_running(dev)
     except JobAlreadyRunningError as e:
         raise HTTPException(status_code=429, detail=str(e)) from e
 
 
-def _new_job(service: str, job_manager: JobManager) -> str:
-    job_id = job_manager.new_job(_devices_for_service(service))
+def _new_job(
+    service: str, job_manager: JobManager, numbers: Optional[List[str]] = None
+) -> str:
+    job_id = job_manager.new_job(_devices_for_service(service, numbers))
     logger.debug("Created job %s", job_id)
     return job_id
 
