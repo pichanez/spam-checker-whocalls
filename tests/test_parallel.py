@@ -33,23 +33,23 @@ class DummyChecker(PhoneChecker):
 async def test_parallel_checks(monkeypatch):
     repo = SQLiteJobRepository(":memory:")
     manager = JobManager(repo)
-    monkeypatch.setattr(api, "job_manager", manager)
-    monkeypatch.setattr(api, "get_checker_class", lambda name: DummyChecker)
-    monkeypatch.setattr(api, "_ping_device", lambda *a, **kw: None)
+    monkeypatch.setattr(api.jobs, "job_manager", manager)
+    monkeypatch.setattr(api.jobs, "get_checker_class", lambda name: DummyChecker)
+    monkeypatch.setattr(api.jobs, "_ping_device", lambda *a, **kw: None)
 
-    api.device_pools = {
+    api.jobs.device_pools = {
         "kaspersky": DevicePool(["dev1", "dev2"]),
         "truecaller": DevicePool([]),
         "getcontact": DevicePool([]),
     }
 
-    j1 = api._new_job("kaspersky")
-    j2 = api._new_job("kaspersky")
+    j1 = api.jobs._new_job("kaspersky")
+    j2 = api.jobs._new_job("kaspersky")
 
-    workers = [asyncio.create_task(api._worker()) for _ in range(2)]
-    await api.enqueue_job(j1, ["111"], "kaspersky")
-    await api.enqueue_job(j2, ["222"], "kaspersky")
-    await api.job_queue.join()
+    workers = [asyncio.create_task(api.jobs._worker()) for _ in range(2)]
+    await api.jobs.enqueue_job(j1, ["111"], "kaspersky")
+    await api.jobs.enqueue_job(j2, ["222"], "kaspersky")
+    await api.jobs.job_queue.join()
 
     for w in workers:
         w.cancel()
@@ -58,5 +58,5 @@ async def test_parallel_checks(monkeypatch):
 
     assert manager.get_job(j1)["status"] == "completed"
     assert manager.get_job(j2)["status"] == "completed"
-    assert len(api.device_pools["kaspersky"]) == 2
+    assert len(api.jobs.device_pools["kaspersky"]) == 2
 
