@@ -453,3 +453,26 @@ def test_db_stores_unicode():
 
     stored = repo._db.execute("SELECT results FROM jobs WHERE job_id=?", (job_id,)).fetchone()[0]
     assert "Русский текст" in stored
+
+
+def test_tbank_decodes_escaped_html(monkeypatch):
+    import requests as req
+
+    escaped = (
+        "<div>\u041d\u043e\u043c\u0435\u0440 8"  # 'Номер 8'
+        "\u0432\u0435\u0440\u043e\u044f\u0442\u043d\u043e, "
+        "\u043f\u0440\u0438\u043d\u0430\u0434\u043b\u0435\u0436\u0438\u0442 "
+        "\u0441\u043f\u0430\u043c\u0435\u0440\u0443</div>"
+    )
+
+    class DummyResp:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+    monkeypatch.setattr(req, "get", lambda *a, **kw: DummyResp(escaped))
+
+    from phone_spam_checker.infrastructure import TbankChecker
+
+    checker = TbankChecker("")
+    res = checker.check_number("89100000000")
+    assert res.status != api.CheckStatus.UNKNOWN

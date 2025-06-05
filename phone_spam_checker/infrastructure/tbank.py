@@ -28,6 +28,12 @@ class TbankChecker(PhoneChecker):
             url = f"{self.BASE_URL}/{phone}/"
             resp = requests.get(url, timeout=5)
             text = resp.text
+            # service sometimes returns text with unicode escapes
+            if "\\u" in text:
+                try:
+                    text = text.encode("latin1").decode("unicode_escape")
+                except Exception:
+                    pass
             match = re.search(
                 r"<div[^>]*>(Номер\s+8.*?вероятно, принадлежит.*?)(</div>|$)",
                 text,
