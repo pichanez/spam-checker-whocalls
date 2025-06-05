@@ -31,12 +31,17 @@ The application loads its configuration from environment variables. The most imp
 - `LOG_FILE` – optional path to a file where logs will be written.
 - `WORKER_COUNT` – how many background workers process jobs.
 - `CHECKER_MODULES` – comma-separated list of modules with extra checkers.
+- `USE_REDIS` – set to `1` to enable distributed mode using Redis.
+- `REDIS_HOST` / `REDIS_PORT` – address of the Redis server.
 
 `*_DEVICES` variables override the single `*_ADB_HOST`/`*_ADB_PORT` settings and
 allow specifying multiple devices separated by commas. If not set, the host/port
 values are used.
 
 Values can be provided in an `.env` file which is read by `docker-compose`.
+
+When `USE_REDIS` is enabled the service stores device pools and job queues in
+Redis allowing multiple instances to work together.
 
 ## Running with Docker
 
