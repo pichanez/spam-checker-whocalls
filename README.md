@@ -68,6 +68,16 @@ adb connect ${KASP_ADB_HOST}:${KASP_ADB_PORT}
 adb connect ${TC_ADB_HOST}:${TC_ADB_PORT}
 adb connect ${GC_ADB_HOST}:${GC_ADB_PORT}
 ```
+### CLI usage
+
+Run checks without the API using:
+
+```bash
+python phone_checker_cli.py SERVICE --input phones.txt --output results.csv --device 127.0.0.1:5555
+```
+
+Replace `SERVICE` with `kaspersky`, `truecaller` or `getcontact`. Any additional arguments are passed to the chosen checker.
+
 
 ## Tests
 

@@ -1,4 +1,4 @@
-from phone_spam_checker.infrastructure.kaspersky import main
+from phone_checker_cli import main
 
 if __name__ == "__main__":
-    exit(main())
+    exit(main(["kaspersky"]))
