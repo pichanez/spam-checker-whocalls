@@ -35,6 +35,20 @@ docker-compose up --build
 
 The API will be available on <http://localhost:8000>.
 
+### API usage
+
+POST `/check_numbers` expects JSON body:
+
+```json
+{
+  "numbers": ["123"],
+  "service": "auto"  // or "kaspersky", "truecaller", "getcontact"
+}
+```
+
+The `service` field controls which checker is used. By default (`"auto"`) the
+service will choose Kaspersky for Russian numbers and Truecaller otherwise.
+
 ## Running locally
 
 Install dependencies and launch `uvicorn`:

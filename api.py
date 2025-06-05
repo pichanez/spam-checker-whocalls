@@ -47,6 +47,7 @@ job_manager = JobManager(settings.job_db_path)
 # --- data models (pydantic) ---------------------------------------------------
 class CheckRequest(BaseModel):
     numbers: List[str]
+    service: str = "auto"  # 'auto', 'kaspersky', 'truecaller', 'getcontact'
 
 
 class JobResponse(BaseModel):
@@ -93,14 +94,20 @@ async def start_cleanup_task() -> None:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 1. Kaspersky + Truecaller  (legacy endpoint) ---------------------------------
+# 1. Kaspersky / Truecaller ----------------------------------------------------
 # ═════════════════════════════════════════════════════════════════════════════
-async def _run_check(job_id: str, numbers: List[str]) -> None:
+async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
     numbers = [num.lstrip("+") for num in numbers]
 
-    # distribute numbers between checkers
-    kasp_nums = [n for n in numbers if re.match(r"^(7|\+7)9", n)]
-    tc_nums = [n for n in numbers if n not in kasp_nums]
+    if service == "kaspersky":
+        kasp_nums = numbers
+        tc_nums = []
+    elif service == "truecaller":
+        kasp_nums = []
+        tc_nums = numbers
+    else:  # auto
+        kasp_nums = [n for n in numbers if re.match(r"^(7|\+7)9", n)]
+        tc_nums = [n for n in numbers if n not in kasp_nums]
 
     # -- ADB device addresses --------------------------------------------
     kasp_device = f"{settings.kasp_adb_host}:{settings.kasp_adb_port}"
@@ -156,7 +163,7 @@ async def _run_check(job_id: str, numbers: List[str]) -> None:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 2. GetContact  (new endpoint) -----------------------------------------------
+# 2. GetContact ---------------------------------------------------------------
 # ═════════════════════════════════════════════════════════════════════════════
 async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
     # GetContact will add '+' itself; remove duplicates
@@ -195,22 +202,21 @@ async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
 # --- endpoints ---------------------------------------------------------------
 @app.post("/check_numbers", response_model=JobResponse)
 def submit_check(
-    request: CheckRequest, background_tasks: BackgroundTasks, _: str = Depends(get_api_key)
+    request: CheckRequest,
+    background_tasks: BackgroundTasks,
+    _: str = Depends(get_api_key),
 ) -> JobResponse:
     _ensure_no_running()
     job_id = _new_job()
-    background_tasks.add_task(_run_check, job_id, request.numbers)
+    if request.service == "getcontact":
+        background_tasks.add_task(_run_check_gc, job_id, request.numbers)
+    elif request.service in {"auto", "kaspersky", "truecaller"}:
+        background_tasks.add_task(_run_check, job_id, request.numbers, request.service)
+    else:
+        raise HTTPException(status_code=400, detail="Unknown service")
     return JobResponse(job_id=job_id)
 
 
-@app.post("/check_numbers_gc", response_model=JobResponse)         # NEW
-def submit_check_gc(
-    request: CheckRequest, background_tasks: BackgroundTasks, _: str = Depends(get_api_key)
-) -> JobResponse:
-    _ensure_no_running()
-    job_id = _new_job()
-    background_tasks.add_task(_run_check_gc, job_id, request.numbers)
-    return JobResponse(job_id=job_id)
 
 
 @app.get("/status/{job_id}", response_model=StatusResponse)

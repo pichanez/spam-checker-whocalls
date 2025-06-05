@@ -40,7 +40,7 @@ def test_submit_check(monkeypatch):
     client = TestClient(api.app)
     response = client.post(
         "/check_numbers",
-        json={"numbers": ["123"]},
+        json={"numbers": ["123"], "service": "getcontact"},
         headers={"X-API-Key": api.settings.api_key},
     )
     assert response.status_code == 200
