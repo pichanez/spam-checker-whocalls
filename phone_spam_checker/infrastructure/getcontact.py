@@ -1,9 +1,8 @@
 import logging
 
-from ..device_client import AndroidDeviceClient
+from .base_checker import AndroidAppChecker
 
 from ..domain.models import PhoneCheckResult, CheckStatus
-from ..domain.phone_checker import PhoneChecker
 
 APP_PACKAGE = "app.source.getcontact"
 APP_ACTIVITY = ".ui.starter.StarterActivity"
@@ -24,11 +23,7 @@ LOC_PRIVATE_MODE = {"resourceId": "dialog.privateModeSettings.title"}
 logger = logging.getLogger(__name__)
 
 
-class GetContactChecker(PhoneChecker):
-    def __init__(self, device: str) -> None:
-        super().__init__(device)
-        self.client = AndroidDeviceClient(device)
-        self.d = self.client.d
+class GetContactChecker(AndroidAppChecker):
 
     def launch_app(self) -> bool:
         logger.info("Launching GetContact")
