@@ -11,6 +11,8 @@ from .infrastructure import (  # noqa: F401
     TruecallerChecker,
     GetContactChecker,
 )
+from .job_manager import JobManager
+from .logging_config import configure_logging
 
 __all__ = [
     "PhoneCheckResult",
@@ -21,4 +23,6 @@ __all__ = [
     "KasperskyWhoCallsChecker",
     "TruecallerChecker",
     "GetContactChecker",
+    "JobManager",
+    "configure_logging",
 ]

@@ -7,6 +7,7 @@ import uiautomator2 as u2
 from ..domain.models import PhoneCheckResult
 from ..domain.phone_checker import PhoneChecker
 from ..utils import read_phone_list, write_results
+from ..logging_config import configure_logging
 
 APP_PACKAGE = "com.truecaller"
 APP_ACTIVITY = "com.truecaller.ui.TruecallerInit"
@@ -19,11 +20,7 @@ LOC_NAME_OR_NUMBER = {"resourceId": "com.truecaller:id/nameOrNumber"}
 LOC_NUMBER_DETAILS = {"resourceId": "com.truecaller:id/numberDetails"}
 LOC_PHONE_NUMBER = {"resourceId": "com.truecaller:id/phoneNumber"}
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 

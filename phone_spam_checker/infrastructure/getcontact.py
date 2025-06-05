@@ -7,6 +7,7 @@ import uiautomator2 as u2
 from ..domain.models import PhoneCheckResult
 from ..domain.phone_checker import PhoneChecker
 from ..utils import read_phone_list, write_results
+from ..logging_config import configure_logging
 
 APP_PACKAGE = "app.source.getcontact"
 APP_ACTIVITY = ".ui.starter.StarterActivity"
@@ -24,11 +25,7 @@ LOC_LIMIT_DIALOG_CANCEL = {
 }
 LOC_PRIVATE_MODE = {"resourceId": "dialog.privateModeSettings.title"}
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 

@@ -10,16 +10,19 @@ Run:
 
 import os
 import uuid
-import threading
 import asyncio
 import re
 import socket
 from typing import List, Dict, Optional, Any
-from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
+import logging
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security, Request
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
+
+from phone_spam_checker.job_manager import JobManager
+from phone_spam_checker.logging_config import configure_logging
 
 # --- checker imports ----------------------------------------------------------
 from phone_spam_checker.registry import get_checker_class
@@ -38,11 +41,10 @@ async def get_api_key(api_key: str = Security(api_key_header)) -> str:
     return api_key
 
 
-# --- background parameters ----------------------------------------------------
-CLEANUP_INTERVAL_SECONDS = 60
-JOB_TTL = timedelta(hours=1)
-jobs: Dict[str, Dict[str, Any]] = {}
-jobs_lock = threading.Lock()
+configure_logging()
+logger = logging.getLogger(__name__)
+
+job_manager = JobManager()
 
 # --- data models (pydantic) ---------------------------------------------------
 class CheckRequest(BaseModel):
@@ -73,19 +75,18 @@ app = FastAPI(
     dependencies=[Depends(get_api_key)],
 )
 
+
+@app.middleware("http")
+async def exception_middleware(request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.exception("Unhandled exception")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
 # --- cleanup old jobs --------------------------------------------------------
 async def cleanup_jobs() -> None:
-    while True:
-        now = datetime.utcnow()
-        with jobs_lock:
-            outdated = [
-                jid
-                for jid, info in jobs.items()
-                if now - info.get("created_at", now) > JOB_TTL
-            ]
-            for jid in outdated:
-                del jobs[jid]
-        await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+    await job_manager.cleanup_loop()
 
 
 @app.on_event("startup")
@@ -216,8 +217,7 @@ def submit_check_gc(
 
 @app.get("/status/{job_id}", response_model=StatusResponse)
 def get_status(job_id: str, _: str = Depends(get_api_key)) -> StatusResponse:
-    with jobs_lock:
-        job = jobs.get(job_id)
+    job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job ID not found")
     return StatusResponse(
@@ -238,30 +238,16 @@ def _ping_device(host: str, port: str, timeout: int = 5) -> None:
 
 
 def _ensure_no_running() -> None:
-    with jobs_lock:
-        if any(info.get("status") == "in_progress" for info in jobs.values()):
-            raise HTTPException(status_code=429, detail="Previous task is still in progress")
+    job_manager.ensure_no_running()
 
 
 def _new_job() -> str:
-    job_id = uuid.uuid4().hex
-    with jobs_lock:
-        jobs[job_id] = {
-            "status": "in_progress",
-            "results": None,
-            "error": None,
-            "created_at": datetime.utcnow(),
-        }
-    return job_id
+    return job_manager.new_job()
 
 
 def _complete_job(job_id: str, results: List[CheckResult]) -> None:
-    with jobs_lock:
-        jobs[job_id]["status"] = "completed"
-        jobs[job_id]["results"] = results
+    job_manager.complete_job(job_id, results)
 
 
 def _fail_job(job_id: str, error: str) -> None:
-    with jobs_lock:
-        jobs[job_id]["status"] = "failed"
-        jobs[job_id]["error"] = error
+    job_manager.fail_job(job_id, error)
