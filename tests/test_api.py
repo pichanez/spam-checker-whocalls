@@ -20,6 +20,8 @@ os.environ.setdefault("SECRET_KEY", "secret")
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
 from phone_spam_checker.job_manager import JobRepository, JobManager
+from phone_spam_checker.dependencies import get_job_manager
+import phone_spam_checker.dependencies as deps
 from phone_spam_checker.exceptions import JobAlreadyRunningError, DeviceConnectionError
 
 configure_logging(
@@ -79,8 +81,8 @@ def _auth_header(client: TestClient) -> dict[str, str]:
 
 
 def test_submit_check(monkeypatch):
-    monkeypatch.setattr(api.jobs, "job_manager", JobManager(DummyRepository()))
-    monkeypatch.setattr(api.jobs, "_new_job", lambda service: "job123")
+    api.app.dependency_overrides[get_job_manager] = lambda: JobManager(DummyRepository())
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: "job123")
     called = {}
 
     async def fake_enqueue(job_id, numbers, service):
@@ -97,6 +99,7 @@ def test_submit_check(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json() == {"job_id": "job123"}
+    api.app.dependency_overrides.clear()
 
 
 def test_get_status(monkeypatch):
@@ -111,7 +114,7 @@ def test_get_status(monkeypatch):
             "created_at": datetime.utcnow(),
         }
     }
-    monkeypatch.setattr(api.jobs, "job_manager", JobManager(DummyRepository(job_data)))
+    api.app.dependency_overrides[get_job_manager] = lambda: JobManager(DummyRepository(job_data))
 
     client = TestClient(api.app)
     headers = _auth_header(client)
@@ -123,10 +126,11 @@ def test_get_status(monkeypatch):
     body = response.json()
     assert body["status"] == "completed"
     assert body["results"][0]["phone_number"] == "123"
+    api.app.dependency_overrides.clear()
 
 
 async def _dummy_run_check(job_id, numbers, service):
-    manager = api.jobs.job_manager
+    manager = get_job_manager()
     results = [
         api.CheckResult(phone_number=n, status=api.CheckStatus.SAFE) for n in numbers
     ]
@@ -135,8 +139,11 @@ async def _dummy_run_check(job_id, numbers, service):
 
 def test_background_task_completion(monkeypatch):
     manager = JobManager(DummyRepository())
-    monkeypatch.setattr(api.jobs, "job_manager", manager)
-    monkeypatch.setattr(api.jobs, "_new_job", lambda service: "job123")
+    api.app.dependency_overrides[get_job_manager] = lambda: manager
+    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
+    deps._job_manager = manager
+    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: "job123")
 
     async def immediate(job_id, numbers, service):
         await _dummy_run_check(job_id, numbers, service)
@@ -155,6 +162,7 @@ def test_background_task_completion(monkeypatch):
     job = manager.get_job("job123")
     assert job["status"] == "completed"
     assert job["results"][0].phone_number == "123"
+    api.app.dependency_overrides.clear()
 
 
 def test_device_error_response(monkeypatch):
@@ -180,15 +188,17 @@ def test_job_failed_when_device_unreachable(monkeypatch):
         raise DeviceConnectionError("boom")
 
     manager = JobManager(DummyRepository())
-    monkeypatch.setattr(api.jobs, "job_manager", manager)
-    monkeypatch.setattr(api.jobs, "_new_job", lambda service: "job123")
+    api.app.dependency_overrides[get_job_manager] = lambda: manager
+    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
+    deps._job_manager = manager
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: "job123")
     monkeypatch.setattr(api.jobs, "_ping_device", failing_ping)
 
     async def immediate(job_id, numbers, service):
         if service == "getcontact":
-            await api.jobs._run_check_gc(job_id, numbers)
+            await api.jobs._run_check_gc(job_id, numbers, manager)
         else:
-            await api.jobs._run_check(job_id, numbers, service)
+            await api.jobs._run_check(job_id, numbers, service, manager)
 
     monkeypatch.setattr(api.jobs, "enqueue_job", immediate)
 
@@ -203,10 +213,11 @@ def test_job_failed_when_device_unreachable(monkeypatch):
     job = manager.get_job("job123")
     assert job["status"] == "failed"
     assert "boom" in job["error"]
+    api.app.dependency_overrides.clear()
 
 
 def test_job_already_running(monkeypatch):
-    def busy_new_job(service):
+    def busy_new_job(service, jm):
         raise JobAlreadyRunningError("Previous task is still in progress")
 
     monkeypatch.setattr(api.jobs, "_new_job", busy_new_job)
@@ -235,13 +246,15 @@ def test_invalid_phone_number():
 
 def test_multiple_jobs(monkeypatch):
     manager = JobManager(DummyRepository())
-    monkeypatch.setattr(api.jobs, "job_manager", manager)
+    api.app.dependency_overrides[get_job_manager] = lambda: manager
+    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
+    deps._job_manager = manager
     ids = ["job1", "job2"]
 
     def gen_id(service):
         return ids.pop(0)
 
-    monkeypatch.setattr(api.jobs, "_new_job", gen_id)
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service, jm: gen_id(service))
 
     async def immediate(job_id, numbers, service):
         await _dummy_run_check(job_id, numbers, service)
@@ -266,3 +279,4 @@ def test_multiple_jobs(monkeypatch):
     assert r2.status_code == 200
     assert manager.get_job("job1")["status"] == "completed"
     assert manager.get_job("job2")["status"] == "completed"
+    api.app.dependency_overrides.clear()

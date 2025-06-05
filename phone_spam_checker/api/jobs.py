@@ -9,16 +9,12 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 from phone_spam_checker.config import settings
-from phone_spam_checker.device_pool import DevicePool
 from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
 from .schemas import CheckResult
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.exceptions import DeviceConnectionError, JobAlreadyRunningError
-from phone_spam_checker.job_manager import (
-    JobManager,
-    SQLiteJobRepository,
-    PostgresJobRepository,
-)
+from phone_spam_checker.job_manager import JobManager
+from phone_spam_checker.dependencies import get_job_manager, get_device_pool
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.registry import (
     get_checker_class,
@@ -32,16 +28,7 @@ for mod in filter(None, getattr(settings, "checker_modules", [])):
     load_checker_module(mod)
 logger = logging.getLogger(__name__)
 
-if settings.pg_host:
-    job_repo = PostgresJobRepository(settings.pg_dsn)
-else:
-    job_repo = SQLiteJobRepository(settings.job_db_path)
-job_manager = JobManager(job_repo)
-
 job_queue: asyncio.Queue[tuple[str, List[str], str]] = asyncio.Queue()
-
-# device pools will be created on startup
-device_pools: Dict[str, DevicePool] = {}
 
 
 async def enqueue_job(job_id: str, numbers: List[str], service: str) -> None:
@@ -50,46 +37,44 @@ async def enqueue_job(job_id: str, numbers: List[str], service: str) -> None:
 
 
 async def _worker() -> None:
+    job_manager = get_job_manager()
     while True:
         job_id, numbers, service = await job_queue.get()
         try:
             if service == "getcontact":
-                with device_pools["getcontact"] as gc_dev:
-                    await _run_check_gc(job_id, numbers, gc_dev)
+                with get_device_pool("getcontact") as gc_dev:
+                    await _run_check_gc(job_id, numbers, job_manager, gc_dev)
             else:
                 with contextlib.ExitStack() as stack:
                     kasp_dev = tc_dev = None
                     if service in {"kaspersky", "auto"}:
-                        kasp_dev = stack.enter_context(device_pools["kaspersky"])
+                        kasp_dev = stack.enter_context(get_device_pool("kaspersky"))
                     if service in {"truecaller", "auto"}:
-                        tc_dev = stack.enter_context(device_pools["truecaller"])
+                        tc_dev = stack.enter_context(get_device_pool("truecaller"))
                     await _run_check(
                         job_id,
                         numbers,
                         service,
+                        job_manager,
                         kasp_device=kasp_dev,
                         tc_device=tc_dev,
                     )
         except JobAlreadyRunningError as exc:
-            _fail_job(job_id, str(exc))
+            _fail_job(job_id, str(exc), job_manager)
         finally:
             job_queue.task_done()
 
 
 async def cleanup_jobs() -> None:
-    await job_manager.cleanup_loop()
+    await get_job_manager().cleanup_loop()
 
 
 async def start_background_tasks() -> None:
     asyncio.create_task(cleanup_jobs())
-    device_pools.update(
-        {
-            "kaspersky": DevicePool(settings.kasp_devices),
-            "truecaller": DevicePool(settings.tc_devices),
-            "getcontact": DevicePool(settings.gc_devices),
-        }
-    )
-    device_count = sum(len(pool) for pool in device_pools.values())
+    services = ["kaspersky", "truecaller", "getcontact"]
+    for svc in services:
+        get_device_pool(svc)
+    device_count = sum(len(get_device_pool(svc)) for svc in services)
     num_workers = settings.worker_count or device_count
     for _ in range(num_workers):
         asyncio.create_task(_worker())
@@ -102,6 +87,7 @@ async def _run_check(
     job_id: str,
     numbers: List[str],
     service: str,
+    job_manager: JobManager,
     *,
     kasp_device: Optional[str] = None,
     tc_device: Optional[str] = None,
@@ -180,9 +166,9 @@ async def _run_check(
 
     except Exception as e:
         logger.error("Job %s failed: %s", job_id, e)
-        _fail_job(job_id, str(e))
+        _fail_job(job_id, str(e), job_manager)
     else:
-        _complete_job(job_id, results)
+        _complete_job(job_id, results, job_manager)
         duration = asyncio.get_event_loop().time() - start_ts
         logger.info("Job %s completed in %.2fs", job_id, duration)
     finally:
@@ -196,7 +182,10 @@ async def _run_check(
 # 2. GetContact
 # =============================================================================
 async def _run_check_gc(
-    job_id: str, numbers: List[str], gc_device: Optional[str] = None
+    job_id: str,
+    numbers: List[str],
+    job_manager: JobManager,
+    gc_device: Optional[str] = None,
 ) -> None:
     # GetContact will add '+' itself; remove duplicates
     uniq_numbers = list(dict.fromkeys(numbers))  # preserve order
@@ -228,9 +217,9 @@ async def _run_check_gc(
 
     except Exception as e:
         logger.error("Job %s failed: %s", job_id, e)
-        _fail_job(job_id, str(e))
+        _fail_job(job_id, str(e), job_manager)
     else:
-        _complete_job(job_id, results)
+        _complete_job(job_id, results, job_manager)
         duration = asyncio.get_event_loop().time() - start_ts
         logger.info("Job %s completed in %.2fs", job_id, duration)
     finally:
@@ -261,7 +250,7 @@ def _devices_for_service(service: str) -> List[str]:
     return ["kaspersky", "truecaller"]
 
 
-def _ensure_no_running(service: str) -> None:
+def _ensure_no_running(service: str, job_manager: JobManager) -> None:
     try:
         for dev in _devices_for_service(service):
             job_manager.ensure_no_running(dev)
@@ -269,18 +258,18 @@ def _ensure_no_running(service: str) -> None:
         raise HTTPException(status_code=429, detail=str(e)) from e
 
 
-def _new_job(service: str) -> str:
+def _new_job(service: str, job_manager: JobManager) -> str:
     job_id = job_manager.new_job(_devices_for_service(service))
     logger.debug("Created job %s", job_id)
     return job_id
 
 
-def _complete_job(job_id: str, results: List[CheckResult]) -> None:
+def _complete_job(job_id: str, results: List[CheckResult], job_manager: JobManager) -> None:
     logger.debug("Marking job %s as completed", job_id)
     job_manager.complete_job(job_id, results)
 
 
-def _fail_job(job_id: str, error: str) -> None:
+def _fail_job(job_id: str, error: str, job_manager: JobManager) -> None:
     logger.debug("Marking job %s as failed: %s", job_id, error)
     job_manager.fail_job(job_id, error)
 
