@@ -4,6 +4,16 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 
+import sys
+import types
+from pathlib import Path
+import os
+sys.modules.setdefault("uiautomator2", types.ModuleType("uiautomator2"))
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+os.environ.setdefault("API_KEY", "testkey")
+
 import api
 
 
@@ -25,6 +35,14 @@ class DummyJobManager:
             "status": "completed",
             "results": results,
             "error": None,
+            "created_at": datetime.utcnow(),
+        }
+
+    def fail_job(self, job_id, error):
+        self.job_data[job_id] = {
+            "status": "failed",
+            "results": None,
+            "error": error,
             "created_at": datetime.utcnow(),
         }
 

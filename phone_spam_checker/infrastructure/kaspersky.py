@@ -8,6 +8,7 @@ from ..domain.models import PhoneCheckResult
 from ..domain.phone_checker import PhoneChecker
 from ..utils import read_phone_list, write_results
 from ..logging_config import configure_logging
+from ..config import settings
 
 APP_PACKAGE = "com.kaspersky.who_calls"
 APP_ACTIVITY = "com.kaspersky.who_calls.LauncherActivityAlias"
@@ -20,7 +21,6 @@ LOC_BTN_CANCEL = {"resourceId": "android:id/button2"}
 LOC_SPAM_TEXT = {"textContains": "SPAM!"}
 LOC_USEFUL_TEXT = {"textContains": "useful"}
 
-configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -107,6 +107,8 @@ class KasperskyWhoCallsChecker(PhoneChecker):
 
 
 def main() -> int:
+    configure_logging(level=settings.log_level)
+
     parser = argparse.ArgumentParser(
         description="Phone number lookup via Kaspersky Who Calls"
     )

@@ -8,6 +8,7 @@ from ..domain.models import PhoneCheckResult
 from ..domain.phone_checker import PhoneChecker
 from ..utils import read_phone_list, write_results
 from ..logging_config import configure_logging
+from ..config import settings
 
 APP_PACKAGE = "com.truecaller"
 APP_ACTIVITY = "com.truecaller.ui.TruecallerInit"
@@ -20,7 +21,6 @@ LOC_NAME_OR_NUMBER = {"resourceId": "com.truecaller:id/nameOrNumber"}
 LOC_NUMBER_DETAILS = {"resourceId": "com.truecaller:id/numberDetails"}
 LOC_PHONE_NUMBER = {"resourceId": "com.truecaller:id/phoneNumber"}
 
-configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -111,6 +111,8 @@ class TruecallerChecker(PhoneChecker):
 
 
 def main() -> int:
+    configure_logging(level=settings.log_level)
+
     parser = argparse.ArgumentParser(
         description="Phone number lookup via Truecaller"
     )

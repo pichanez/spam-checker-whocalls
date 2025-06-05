@@ -21,6 +21,7 @@ class Settings:
     gc_adb_host: str = "127.0.0.1"
     gc_adb_port: str = "5557"
     job_db_path: str = "jobs.sqlite"
+    log_level: str = "INFO"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -33,5 +34,6 @@ class Settings:
             gc_adb_host=_getenv("GC_ADB_HOST", "127.0.0.1"),
             gc_adb_port=_getenv("GC_ADB_PORT", "5557"),
             job_db_path=_getenv("JOB_DB_PATH", "jobs.sqlite"),
+            log_level=_getenv("LOG_LEVEL", "INFO"),
         )
 settings = Settings.from_env()

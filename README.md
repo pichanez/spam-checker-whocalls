@@ -18,6 +18,7 @@ The application loads its configuration from environment variables. The most imp
 - `TC_ADB_HOST` / `TC_ADB_PORT` – address of the device with Truecaller.
 - `GC_ADB_HOST` / `GC_ADB_PORT` – address of the device with GetContact.
 - `JOB_DB_PATH` – path to the SQLite file storing job statuses.
+- `LOG_LEVEL` – logging verbosity (e.g. `INFO`, `DEBUG`).
 
 Values can be provided in an `.env` file which is read by `docker-compose`.
 

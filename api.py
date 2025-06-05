@@ -39,7 +39,7 @@ async def get_api_key(api_key: str = Security(api_key_header)) -> str:
     return api_key
 
 
-configure_logging()
+configure_logging(level=settings.log_level)
 logger = logging.getLogger(__name__)
 
 job_manager = JobManager(settings.job_db_path)
