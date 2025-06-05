@@ -25,7 +25,11 @@ from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
 
 # --- checker imports ----------------------------------------------------------
-from phone_spam_checker.registry import get_checker_class
+from phone_spam_checker.registry import (
+    get_checker_class,
+    register_default_checkers,
+    load_checker_module,
+)
 from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.exceptions import DeviceConnectionError, JobAlreadyRunningError
@@ -46,6 +50,9 @@ configure_logging(
     fmt=settings.log_format,
     log_file=settings.log_file,
 )
+register_default_checkers()
+for mod in filter(None, getattr(settings, "checker_modules", [])):
+    load_checker_module(mod)
 logger = logging.getLogger(__name__)
 
 job_manager = JobManager(SQLiteJobRepository(settings.job_db_path))

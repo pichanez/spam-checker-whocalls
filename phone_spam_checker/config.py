@@ -1,6 +1,6 @@
 """Project configuration loaded from environment variables."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 
 
@@ -25,6 +25,7 @@ class Settings:
     log_format: str = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     log_file: str | None = None
     worker_count: int = 1
+    checker_modules: list[str] = field(default_factory=list)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -43,6 +44,7 @@ class Settings:
             ),
             log_file=_getenv("LOG_FILE", "") or None,
             worker_count=int(_getenv("WORKER_COUNT", "1")),
+            checker_modules=[m for m in _getenv("CHECKER_MODULES", "").split(",") if m],
         )
 
 

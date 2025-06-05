@@ -23,6 +23,7 @@ The application loads its configuration from environment variables. The most imp
 - `LOG_FORMAT` – Python logging format string.
 - `LOG_FILE` – optional path to a file where logs will be written.
 - `WORKER_COUNT` – how many background workers process jobs.
+- `CHECKER_MODULES` – comma-separated list of modules with extra checkers.
 
 Values can be provided in an `.env` file which is read by `docker-compose`.
 

@@ -2,9 +2,8 @@ import argparse
 import logging
 from pathlib import Path
 
-# Ensure checkers are registered
-from . import infrastructure  # noqa: F401
-from .registry import CHECKER_REGISTRY, get_checker_class
+# Checkers are registered explicitly by callers
+from .registry import get_checker_class, list_checkers
 from .utils import read_phone_list, write_results
 from .logging_config import configure_logging
 from .config import settings
@@ -17,7 +16,7 @@ def parse_service_args(argv: list[str] | None = None) -> tuple[str, list[str]]:
     parser = argparse.ArgumentParser(description="CLI for phone spam checking")
     parser.add_argument(
         "service",
-        choices=CHECKER_REGISTRY.keys(),
+        choices=list_checkers(),
         help="Which service implementation to use",
     )
     args, rest = parser.parse_known_args(argv)

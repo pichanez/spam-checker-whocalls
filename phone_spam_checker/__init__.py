@@ -1,12 +1,8 @@
 from .domain.models import PhoneCheckResult, CheckStatus
 from .domain.phone_checker import PhoneChecker
 
-from .registry import (
-    register_checker,
-    get_checker_class,
-    CHECKER_REGISTRY,
-)
-from .infrastructure import (  # noqa: F401
+from .registry import register_checker, get_checker_class
+from .infrastructure import (
     KasperskyWhoCallsChecker,
     TruecallerChecker,
     GetContactChecker,
@@ -22,7 +18,6 @@ __all__ = [
     "PhoneChecker",
     "register_checker",
     "get_checker_class",
-    "CHECKER_REGISTRY",
     "KasperskyWhoCallsChecker",
     "TruecallerChecker",
     "GetContactChecker",
