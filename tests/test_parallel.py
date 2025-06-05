@@ -13,6 +13,8 @@ configure_logging(level=settings.log_level, fmt=settings.log_format, log_file=se
 
 from phone_spam_checker import api
 from phone_spam_checker.job_manager import JobManager, SQLiteJobRepository
+from phone_spam_checker.dependencies import get_job_manager, get_device_pool
+import phone_spam_checker.dependencies as deps
 from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.device_pool import DevicePool
@@ -33,18 +35,23 @@ class DummyChecker(PhoneChecker):
 async def test_parallel_checks(monkeypatch):
     repo = SQLiteJobRepository(":memory:")
     manager = JobManager(repo)
-    monkeypatch.setattr(api.jobs, "job_manager", manager)
+    api.app.dependency_overrides[get_job_manager] = lambda: manager
+    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
+    monkeypatch.setattr(api.jobs, "get_job_manager", lambda: manager)
+    deps._job_manager = manager
     monkeypatch.setattr(api.jobs, "get_checker_class", lambda name: DummyChecker)
     monkeypatch.setattr(api.jobs, "_ping_device", lambda *a, **kw: None)
 
-    api.jobs.device_pools = {
+    pools = {
         "kaspersky": DevicePool(["dev1", "dev2"]),
         "truecaller": DevicePool([]),
         "getcontact": DevicePool([]),
     }
+    monkeypatch.setattr(deps, "get_device_pool", lambda service: pools[service])
+    monkeypatch.setattr(api.jobs, "get_device_pool", lambda service: pools[service])
 
-    j1 = api.jobs._new_job("kaspersky")
-    j2 = api.jobs._new_job("kaspersky")
+    j1 = api.jobs._new_job("kaspersky", manager)
+    j2 = api.jobs._new_job("kaspersky", manager)
 
     workers = [asyncio.create_task(api.jobs._worker()) for _ in range(2)]
     await api.jobs.enqueue_job(j1, ["111"], "kaspersky")
@@ -58,5 +65,6 @@ async def test_parallel_checks(monkeypatch):
 
     assert manager.get_job(j1)["status"] == "completed"
     assert manager.get_job(j2)["status"] == "completed"
-    assert len(api.jobs.device_pools["kaspersky"]) == 2
+    assert len(pools["kaspersky"]) == 2
+    api.app.dependency_overrides.clear()
 
