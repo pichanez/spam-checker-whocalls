@@ -26,7 +26,7 @@ configure_logging(
     log_file=settings.log_file,
 )
 
-import api
+from phone_spam_checker import api
 
 
 class DummyRepository(JobRepository):

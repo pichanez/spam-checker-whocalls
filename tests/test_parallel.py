@@ -11,7 +11,7 @@ from phone_spam_checker.config import settings
 
 configure_logging(level=settings.log_level, fmt=settings.log_format, log_file=settings.log_file)
 
-import api
+from phone_spam_checker import api
 from phone_spam_checker.job_manager import JobManager, SQLiteJobRepository
 from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
 from phone_spam_checker.domain.phone_checker import PhoneChecker
