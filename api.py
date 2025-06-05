@@ -159,7 +159,15 @@ async def cleanup_jobs() -> None:
 @app.on_event("startup")
 async def start_background_tasks() -> None:
     asyncio.create_task(cleanup_jobs())
-    for _ in range(settings.worker_count):
+    device_count = len(
+        {
+            f"{settings.kasp_adb_host}:{settings.kasp_adb_port}",
+            f"{settings.tc_adb_host}:{settings.tc_adb_port}",
+            f"{settings.gc_adb_host}:{settings.gc_adb_port}",
+        }
+    )
+    num_workers = settings.worker_count or device_count
+    for _ in range(num_workers):
         asyncio.create_task(_worker())
 
 
@@ -304,8 +312,8 @@ def submit_check(
     background_tasks: BackgroundTasks,
     _: str = Depends(get_token),
 ) -> JobResponse:
-    _ensure_no_running()
-    job_id = _new_job()
+    _ensure_no_running(request.service)
+    job_id = _new_job(request.service)
     logger.info(
         "Received job %s: %d numbers via %s",
         job_id,
@@ -343,15 +351,26 @@ def _ping_device(host: str, port: str, timeout: int = 5) -> None:
         raise DeviceConnectionError(f"Cannot reach device {host}:{port}: {e}") from e
 
 
-def _ensure_no_running() -> None:
+def _devices_for_service(service: str) -> List[str]:
+    if service == "kaspersky":
+        return ["kaspersky"]
+    if service == "truecaller":
+        return ["truecaller"]
+    if service == "getcontact":
+        return ["getcontact"]
+    # auto uses kaspersky and truecaller devices
+    return ["kaspersky", "truecaller"]
+
+
+def _ensure_no_running(service: str) -> None:
     try:
-        job_manager.ensure_no_running()
+        for dev in _devices_for_service(service):
+            job_manager.ensure_no_running(dev)
     except JobAlreadyRunningError as e:
         raise HTTPException(status_code=429, detail=str(e)) from e
 
-
-def _new_job() -> str:
-    job_id = job_manager.new_job()
+def _new_job(service: str) -> str:
+    job_id = job_manager.new_job(_devices_for_service(service))
     logger.debug("Created job %s", job_id)
     return job_id
 

@@ -15,8 +15,8 @@ from .domain.models import PhoneCheckResult, CheckStatus
 class JobRepository(Protocol):
     """Interface for job storage backends."""
 
-    def new_job(self) -> str:
-        """Create a new job and return its identifier."""
+    def new_job(self, devices: List[str]) -> str:
+        """Create a new job for given devices and return its identifier."""
 
     def complete_job(self, job_id: str, results: List[PhoneCheckResult]) -> None:
         """Mark a job as completed and store results."""
@@ -27,8 +27,8 @@ class JobRepository(Protocol):
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Return job info or ``None`` if not found."""
 
-    def ensure_no_running(self) -> None:
-        """Raise an exception if there is a job in progress."""
+    def ensure_no_running(self, device: str) -> None:
+        """Raise an exception if there is a job in progress for this device."""
 
     def cleanup(self) -> None:
         """Delete old jobs from storage."""
@@ -46,6 +46,7 @@ class SQLiteJobRepository(JobRepository):
             "CREATE TABLE IF NOT EXISTS jobs ("
             "job_id TEXT PRIMARY KEY,"
             "status TEXT,"
+            "devices TEXT,"
             "results TEXT,"
             "error TEXT,"
             "created_at TEXT"
@@ -53,12 +54,20 @@ class SQLiteJobRepository(JobRepository):
         )
         self._db.commit()
 
-    def new_job(self) -> str:
+    def new_job(self, devices: List[str]) -> str:
         job_id = uuid.uuid4().hex
+        devices_str = ",".join(devices)
         with self._lock:
             self._db.execute(
-                "INSERT INTO jobs(job_id, status, results, error, created_at) VALUES(?,?,?,?,?)",
-                (job_id, "in_progress", None, None, datetime.utcnow().isoformat()),
+                "INSERT INTO jobs(job_id, status, devices, results, error, created_at) VALUES(?,?,?,?,?,?)",
+                (
+                    job_id,
+                    "in_progress",
+                    devices_str,
+                    None,
+                    None,
+                    datetime.utcnow().isoformat(),
+                ),
             )
             self._db.commit()
         return job_id
@@ -122,13 +131,16 @@ class SQLiteJobRepository(JobRepository):
             "created_at": datetime.fromisoformat(created_at),
         }
 
-    def ensure_no_running(self) -> None:
+    def ensure_no_running(self, device: str) -> None:
         with self._lock:
             row = self._db.execute(
-                "SELECT 1 FROM jobs WHERE status='in_progress' LIMIT 1"
+                "SELECT 1 FROM jobs WHERE status='in_progress' AND instr(devices, ?) > 0 LIMIT 1",
+                (device,),
             ).fetchone()
         if row:
-            raise JobAlreadyRunningError("Previous task is still in progress")
+            raise JobAlreadyRunningError(
+                f"Previous task is still in progress for {device}"
+            )
 
     def cleanup(self) -> None:
         limit = datetime.utcnow() - self.JOB_TTL
@@ -147,8 +159,8 @@ class JobManager:
     def __init__(self, repo: JobRepository) -> None:
         self._repo = repo
 
-    def new_job(self) -> str:
-        return self._repo.new_job()
+    def new_job(self, devices: List[str]) -> str:
+        return self._repo.new_job(devices)
 
     def complete_job(self, job_id: str, results: List[PhoneCheckResult]) -> None:
         self._repo.complete_job(job_id, results)
@@ -159,8 +171,8 @@ class JobManager:
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         return self._repo.get_job(job_id)
 
-    def ensure_no_running(self) -> None:
-        self._repo.ensure_no_running()
+    def ensure_no_running(self, device: str) -> None:
+        self._repo.ensure_no_running(device)
 
     async def cleanup_loop(self) -> None:
         while True:
