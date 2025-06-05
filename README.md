@@ -92,7 +92,7 @@ Install dependencies and launch `uvicorn`:
 pip install -r requirements.txt
 export API_KEY=your-key
 export SECRET_KEY=your-secret
-uvicorn api:app --host 0.0.0.0 --port 8000
+uvicorn phone_spam_checker.api:app --host 0.0.0.0 --port 8000
 ```
 
 Before starting, ensure ADB can reach the devices:
@@ -107,7 +107,7 @@ adb connect ${GC_ADB_HOST}:${GC_ADB_PORT}
 Run checks without the API using:
 
 ```bash
-python phone_checker_cli.py SERVICE --input phones.txt --output results.csv --device 127.0.0.1:5555
+python -m scripts.phone_checker_cli SERVICE --input phones.txt --output results.csv --device 127.0.0.1:5555
 ```
 
 Replace `SERVICE` with `kaspersky`, `truecaller` or `getcontact`. Any additional arguments are passed to the chosen checker.

@@ -17,7 +17,7 @@ configure_logging(
     log_file=settings.log_file,
 )
 
-import phone_checker_cli
+from scripts import phone_checker_cli
 from phone_spam_checker import cli_base
 
 
