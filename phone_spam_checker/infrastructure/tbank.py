@@ -28,22 +28,30 @@ class TbankChecker(PhoneChecker):
             url = f"{self.BASE_URL}/{phone}/"
             resp = requests.get(url, timeout=5)
 
-            # decode response content robustly
+            def looks_mojibake(s: str) -> bool:
+                return "Ð" in s and "Ñ" in s
+
             encodings = [
                 resp.encoding,
+                getattr(resp, "apparent_encoding", None),
                 "utf-8",
                 "cp1251",
                 "latin1",
             ]
+
             text = None
             for enc in encodings:
                 if not enc:
                     continue
                 try:
-                    text = resp.content.decode(enc)
-                    break
+                    candidate = resp.content.decode(enc)
                 except Exception:
-                    text = None
+                    continue
+                if looks_mojibake(candidate):
+                    continue
+                text = candidate
+                break
+
             if text is None:
                 text = resp.content.decode("utf-8", errors="ignore")
 

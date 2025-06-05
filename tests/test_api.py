@@ -497,3 +497,24 @@ def test_tbank_decodes_mojibake(monkeypatch):
     checker = TbankChecker("")
     res = checker.check_number("89100000000")
     assert res.status == api.CheckStatus.SPAM
+
+
+def test_tbank_ignores_wrong_resp_encoding(monkeypatch):
+    import requests as req
+
+    html = "<div>Номер 8 вероятно, принадлежит спамеру</div>".encode("utf-8")
+
+    class DummyResp:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+            self.text = content.decode("latin1")
+            self.encoding = "latin1"
+            self.apparent_encoding = "utf-8"
+
+    monkeypatch.setattr(req, "get", lambda *a, **kw: DummyResp(html))
+
+    from phone_spam_checker.infrastructure import TbankChecker
+
+    checker = TbankChecker("")
+    res = checker.check_number("89100000000")
+    assert res.status == api.CheckStatus.SPAM
