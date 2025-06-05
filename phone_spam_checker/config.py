@@ -32,6 +32,9 @@ class Settings:
     log_file: str | None = None
     worker_count: int = 1
     checker_modules: list[str] = field(default_factory=list)
+    kasp_devices: list[str] = field(default_factory=list)
+    tc_devices: list[str] = field(default_factory=list)
+    gc_devices: list[str] = field(default_factory=list)
 
     @property
     def pg_dsn(self) -> str:
@@ -42,7 +45,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        return cls(
+        cfg = cls(
             api_key=_getenv("API_KEY", ""),
             secret_key=_getenv("SECRET_KEY", ""),
             kasp_adb_host=_getenv("KASP_ADB_HOST", "127.0.0.1"),
@@ -64,7 +67,17 @@ class Settings:
             log_file=_getenv("LOG_FILE", "") or None,
             worker_count=int(_getenv("WORKER_COUNT", "1")),
             checker_modules=[m for m in _getenv("CHECKER_MODULES", "").split(",") if m],
+            kasp_devices=[d for d in _getenv("KASP_DEVICES", "").split(",") if d],
+            tc_devices=[d for d in _getenv("TC_DEVICES", "").split(",") if d],
+            gc_devices=[d for d in _getenv("GC_DEVICES", "").split(",") if d],
         )
+        if not cfg.kasp_devices:
+            cfg.kasp_devices = [f"{cfg.kasp_adb_host}:{cfg.kasp_adb_port}"]
+        if not cfg.tc_devices:
+            cfg.tc_devices = [f"{cfg.tc_adb_host}:{cfg.tc_adb_port}"]
+        if not cfg.gc_devices:
+            cfg.gc_devices = [f"{cfg.gc_adb_host}:{cfg.gc_adb_port}"]
+        return cfg
 
 
 settings = Settings.from_env()

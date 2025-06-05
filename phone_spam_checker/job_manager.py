@@ -128,10 +128,10 @@ class SQLiteJobRepository(JobRepository):
             try:
                 data = json.loads(results_json)
                 for entry in data:
-                    status = entry.get("status")
-                    if isinstance(status, str):
+                    st = entry.get("status")
+                    if isinstance(st, str):
                         try:
-                            entry["status"] = CheckStatus(status)
+                            entry["status"] = CheckStatus(st)
                         except Exception:
                             pass
                 results = [PhoneCheckResult(**entry) for entry in data]
