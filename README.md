@@ -102,6 +102,11 @@ export SECRET_KEY=your-secret
 uvicorn phone_spam_checker.api:app --host 0.0.0.0 --port 8000
 ```
 
+`phone_spam_checker.api` автоматически настраивает логирование и
+регистрирует встроенные чекеры при старте приложения. Если вы
+используете библиотеку в собственной точке входа, вызовите
+`phone_spam_checker.bootstrap.initialize()` перед запуском сервиса.
+
 Before starting, ensure ADB can reach the devices:
 
 ```bash
@@ -118,6 +123,9 @@ python -m scripts.phone_checker_cli SERVICE --input phones.txt --output results.
 ```
 
 Replace `SERVICE` with `kaspersky`, `truecaller` or `getcontact`. Any additional arguments are passed to the chosen checker.
+
+В сценариях командной строки инициализация выполняется автоматически,
+поэтому достаточно запустить скрипт, как показано выше.
 
 
 ## Tests

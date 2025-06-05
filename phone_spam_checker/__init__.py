@@ -16,6 +16,7 @@ from .job_manager import (
 from .logging_config import configure_logging
 from .device_client import AndroidDeviceClient
 from .config import settings
+from .bootstrap import initialize
 
 __all__ = [
     "PhoneCheckResult",
@@ -32,5 +33,6 @@ __all__ = [
     "PostgresJobRepository",
     "configure_logging",
     "AndroidDeviceClient",
+    "initialize",
     "settings",
 ]
