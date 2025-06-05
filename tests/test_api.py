@@ -177,3 +177,21 @@ def test_job_failed_when_device_unreachable(monkeypatch):
     job = manager.get_job("job123")
     assert job["status"] == "failed"
     assert "boom" in job["error"]
+
+
+def test_job_already_running(monkeypatch):
+    class BusyJobManager(DummyJobManager):
+        def ensure_no_running(self):
+            raise api.JobAlreadyRunningError("Previous task is still in progress")
+
+    monkeypatch.setattr(api, "job_manager", BusyJobManager())
+    monkeypatch.setattr(api, "_new_job", lambda: "job123")
+
+    client = TestClient(api.app)
+    response = client.post(
+        "/check_numbers",
+        json={"numbers": ["123"], "service": "kaspersky"},
+        headers={"X-API-Key": api.settings.api_key},
+    )
+    assert response.status_code == 429
+    assert "in progress" in response.json()["detail"]

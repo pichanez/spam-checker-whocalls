@@ -7,7 +7,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from fastapi import HTTPException
+from .exceptions import JobAlreadyRunningError
 
 from .domain.models import PhoneCheckResult, CheckStatus
 
@@ -107,7 +107,7 @@ class JobManager:
                 "SELECT 1 FROM jobs WHERE status='in_progress' LIMIT 1"
             ).fetchone()
         if row:
-            raise HTTPException(status_code=429, detail="Previous task is still in progress")
+            raise JobAlreadyRunningError("Previous task is still in progress")
 
     async def cleanup_loop(self) -> None:
         while True:
