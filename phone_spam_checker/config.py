@@ -35,6 +35,9 @@ class Settings:
     kasp_devices: list[str] = field(default_factory=list)
     tc_devices: list[str] = field(default_factory=list)
     gc_devices: list[str] = field(default_factory=list)
+    use_redis: bool = False
+    redis_host: str = "127.0.0.1"
+    redis_port: str = "6379"
 
     @property
     def pg_dsn(self) -> str:
@@ -70,6 +73,9 @@ class Settings:
             kasp_devices=[d for d in _getenv("KASP_DEVICES", "").split(",") if d],
             tc_devices=[d for d in _getenv("TC_DEVICES", "").split(",") if d],
             gc_devices=[d for d in _getenv("GC_DEVICES", "").split(",") if d],
+            use_redis=_getenv("USE_REDIS", "0") == "1",
+            redis_host=_getenv("REDIS_HOST", "127.0.0.1"),
+            redis_port=_getenv("REDIS_PORT", "6379"),
         )
         if not cfg.kasp_devices:
             cfg.kasp_devices = [f"{cfg.kasp_adb_host}:{cfg.kasp_adb_port}"]

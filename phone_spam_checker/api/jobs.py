@@ -14,7 +14,11 @@ from .schemas import CheckResult
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.exceptions import DeviceConnectionError, JobAlreadyRunningError
 from phone_spam_checker.job_manager import JobManager
-from phone_spam_checker.dependencies import get_job_manager, get_device_pool
+from phone_spam_checker.dependencies import (
+    get_job_manager,
+    get_device_pool,
+    get_job_queue,
+)
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.registry import (
     get_checker_class,
@@ -28,7 +32,7 @@ for mod in filter(None, getattr(settings, "checker_modules", [])):
     load_checker_module(mod)
 logger = logging.getLogger(__name__)
 
-job_queue: asyncio.Queue[tuple[str, List[str], str]] = asyncio.Queue()
+job_queue = get_job_queue()
 
 
 async def enqueue_job(job_id: str, numbers: List[str], service: str) -> None:
