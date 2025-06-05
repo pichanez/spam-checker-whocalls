@@ -20,7 +20,7 @@ from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from phone_spam_checker.job_manager import JobManager
+from phone_spam_checker.job_manager import JobManager, SQLiteJobRepository
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
 
@@ -48,7 +48,7 @@ configure_logging(
 )
 logger = logging.getLogger(__name__)
 
-job_manager = JobManager(settings.job_db_path)
+job_manager = JobManager(SQLiteJobRepository(settings.job_db_path))
 job_queue: asyncio.Queue[tuple[str, List[str], str]] = asyncio.Queue()
 
 

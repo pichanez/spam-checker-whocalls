@@ -11,7 +11,7 @@ from .infrastructure import (  # noqa: F401
     TruecallerChecker,
     GetContactChecker,
 )
-from .job_manager import JobManager
+from .job_manager import JobManager, JobRepository, SQLiteJobRepository
 from .logging_config import configure_logging
 from .device_client import AndroidDeviceClient
 from .config import settings
@@ -27,6 +27,8 @@ __all__ = [
     "TruecallerChecker",
     "GetContactChecker",
     "JobManager",
+    "JobRepository",
+    "SQLiteJobRepository",
     "configure_logging",
     "AndroidDeviceClient",
     "settings",

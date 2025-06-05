@@ -5,17 +5,38 @@ import threading
 import uuid
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
 
 from fastapi import HTTPException
 
 from .domain.models import PhoneCheckResult, CheckStatus
 
 
-class JobManager:
-    """Persistent job storage based on SQLite."""
+class JobRepository(Protocol):
+    """Interface for job storage backends."""
 
-    CLEANUP_INTERVAL_SECONDS = 60
+    def new_job(self) -> str:
+        """Create a new job and return its identifier."""
+
+    def complete_job(self, job_id: str, results: List[PhoneCheckResult]) -> None:
+        """Mark a job as completed and store results."""
+
+    def fail_job(self, job_id: str, error: str) -> None:
+        """Mark a job as failed."""
+
+    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Return job info or ``None`` if not found."""
+
+    def ensure_no_running(self) -> None:
+        """Raise an exception if there is a job in progress."""
+
+    def cleanup(self) -> None:
+        """Delete old jobs from storage."""
+
+
+class SQLiteJobRepository(JobRepository):
+    """Job repository backed by a SQLite database."""
+
     JOB_TTL = timedelta(hours=1)
 
     def __init__(self, db_path: str) -> None:
@@ -109,15 +130,39 @@ class JobManager:
         if row:
             raise HTTPException(status_code=429, detail="Previous task is still in progress")
 
-    async def cleanup_loop(self) -> None:
-        while True:
-            await asyncio.sleep(self.CLEANUP_INTERVAL_SECONDS)
-            self._cleanup()
-
-    def _cleanup(self) -> None:
+    def cleanup(self) -> None:
         limit = datetime.utcnow() - self.JOB_TTL
         with self._lock:
             self._db.execute(
                 "DELETE FROM jobs WHERE created_at < ?", (limit.isoformat(),)
             )
             self._db.commit()
+
+
+class JobManager:
+    """Thin wrapper delegating operations to a repository."""
+
+    CLEANUP_INTERVAL_SECONDS = 60
+
+    def __init__(self, repo: JobRepository) -> None:
+        self._repo = repo
+
+    def new_job(self) -> str:
+        return self._repo.new_job()
+
+    def complete_job(self, job_id: str, results: List[PhoneCheckResult]) -> None:
+        self._repo.complete_job(job_id, results)
+
+    def fail_job(self, job_id: str, error: str) -> None:
+        self._repo.fail_job(job_id, error)
+
+    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        return self._repo.get_job(job_id)
+
+    def ensure_no_running(self) -> None:
+        self._repo.ensure_no_running()
+
+    async def cleanup_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self.CLEANUP_INTERVAL_SECONDS)
+            self._repo.cleanup()
