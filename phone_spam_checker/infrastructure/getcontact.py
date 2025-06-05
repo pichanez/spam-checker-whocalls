@@ -1,14 +1,9 @@
-import argparse
 import logging
-from pathlib import Path
 
 from ..device_client import AndroidDeviceClient
 
 from ..domain.models import PhoneCheckResult, CheckStatus
 from ..domain.phone_checker import PhoneChecker
-from ..utils import read_phone_list, write_results
-from ..logging_config import configure_logging
-from ..config import settings
 
 APP_PACKAGE = "app.source.getcontact"
 APP_ACTIVITY = ".ui.starter.StarterActivity"
@@ -112,53 +107,3 @@ class GetContactChecker(PhoneChecker):
 
 
 
-
-def main() -> int:
-    configure_logging(level=settings.log_level)
-
-    parser = argparse.ArgumentParser(
-        description="Phone number lookup via GetContact"
-    )
-    parser.add_argument(
-        "-i",
-        "--input",
-        type=Path,
-        required=True,
-        help="Input file with phone numbers",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=Path("results_getcontact.csv"),
-        help="Output CSV path",
-    )
-    parser.add_argument(
-        "-d",
-        "--device",
-        type=str,
-        default="127.0.0.1:5555",
-        help="Android device ID",
-    )
-    args = parser.parse_args()
-
-    if not args.input.exists():
-        logger.error(f"Input file not found: {args.input}")
-        return 1
-
-    phones = read_phone_list(args.input)
-    logger.info(f"Loaded {len(phones)} numbers from {args.input}")
-
-    checker = GetContactChecker(args.device)
-    if not checker.launch_app():
-        return 1
-
-    results = [checker.check_number(num) for num in phones]
-    checker.close_app()
-    write_results(args.output, results)
-    logger.info(f"Results saved to {args.output}")
-    return 0
-
-
-if __name__ == "__main__":
-    exit(main())

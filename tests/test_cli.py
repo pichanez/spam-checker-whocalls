@@ -8,17 +8,20 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import phone_checker_cli
+from phone_spam_checker import cli_base
 
 
 def test_cli_dispatch(monkeypatch):
     called = {}
 
-    def fake_main():
-        called["service"] = True
+    def fake_run(service, argv=None):
+        called["service"] = service
+        called["argv"] = argv
         return 123
 
-    monkeypatch.setitem(phone_checker_cli.SERVICES, "kaspersky", fake_main)
-    assert phone_checker_cli.main(["kaspersky"]) == 123
-    assert called["service"]
+    monkeypatch.setattr(cli_base, "run_checker", fake_run)
+    monkeypatch.setattr(phone_checker_cli, "run_checker", fake_run)
+    assert phone_checker_cli.main(["kaspersky", "-i", "f.txt"]) == 123
+    assert called == {"service": "kaspersky", "argv": ["-i", "f.txt"]}
 
 
