@@ -27,7 +27,26 @@ class TbankChecker(PhoneChecker):
         try:
             url = f"{self.BASE_URL}/{phone}/"
             resp = requests.get(url, timeout=5)
-            text = resp.text
+
+            # decode response content robustly
+            encodings = [
+                resp.encoding,
+                "utf-8",
+                "cp1251",
+                "latin1",
+            ]
+            text = None
+            for enc in encodings:
+                if not enc:
+                    continue
+                try:
+                    text = resp.content.decode(enc)
+                    break
+                except Exception:
+                    text = None
+            if text is None:
+                text = resp.content.decode("utf-8", errors="ignore")
+
             # service sometimes returns text with unicode escapes
             if "\\u" in text:
                 try:

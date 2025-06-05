@@ -476,3 +476,24 @@ def test_tbank_decodes_escaped_html(monkeypatch):
     checker = TbankChecker("")
     res = checker.check_number("89100000000")
     assert res.status != api.CheckStatus.UNKNOWN
+
+
+def test_tbank_decodes_mojibake(monkeypatch):
+    import requests as req
+
+    html = "<div>Номер 8 вероятно, принадлежит спамеру</div>".encode("utf-8")
+
+    class DummyResp:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+            # emulate wrong decoding to latin1 by requests
+            self.text = content.decode("latin1")
+            self.encoding = None
+
+    monkeypatch.setattr(req, "get", lambda *a, **kw: DummyResp(html))
+
+    from phone_spam_checker.infrastructure import TbankChecker
+
+    checker = TbankChecker("")
+    res = checker.check_number("89100000000")
+    assert res.status == api.CheckStatus.SPAM
