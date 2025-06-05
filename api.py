@@ -22,18 +22,12 @@ from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 
 # ─── импорты чекеров ──────────────────────────────────────────────────────────
-from kaspersky_phone_checker import (
+from phone_spam_checker.infrastructure import (
     KasperskyWhoCallsChecker,
-    PhoneCheckResult as KasperskyResult,
-)
-from truecaller_phone_checker import (
     TruecallerChecker,
-    PhoneCheckResult as TruecallerResult,
-)
-from getcontact_phone_checker import (              # ← добавили!
     GetContactChecker,
-    PhoneCheckResult as GetContactResult,
 )
+from phone_spam_checker.domain.models import PhoneCheckResult
 
 # ─── авторизация по API-ключу ─────────────────────────────────────────────────
 API_KEY = os.getenv("API_KEY", "")
@@ -181,7 +175,7 @@ async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
             raise RuntimeError("Failed to launch GetContact")
 
         # Проверка (CPU-bound → executor)
-        raw: List[GetContactResult] = await loop.run_in_executor(
+        raw: List[PhoneCheckResult] = await loop.run_in_executor(
             None, lambda: [checker.check_number(n) for n in uniq_numbers]
         )
 
