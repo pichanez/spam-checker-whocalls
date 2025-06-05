@@ -12,6 +12,7 @@ import asyncio
 import re
 import socket
 from typing import List, Dict, Optional, Any
+from datetime import datetime, timedelta
 
 import logging
 
@@ -19,7 +20,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
-from jwt import PyJWTError
+from jwt import PyJWTError, ExpiredSignatureError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
@@ -49,7 +50,11 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def _create_token() -> str:
-    return jwt.encode({"sub": "api"}, settings.secret_key, algorithm="HS256")
+    payload = {
+        "sub": "api",
+        "exp": datetime.utcnow() + timedelta(minutes=30),
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
 
 async def login(api_key: str = Security(api_key_header)) -> dict:
@@ -65,6 +70,8 @@ async def get_token(
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
         jwt.decode(credentials.credentials, settings.secret_key, algorithms=["HS256"])
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=403, detail="Token expired")
     except PyJWTError:
         raise HTTPException(status_code=403, detail="Invalid token")
     return credentials.credentials

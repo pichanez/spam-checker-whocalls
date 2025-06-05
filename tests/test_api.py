@@ -1,8 +1,9 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+import jwt
 
 import sys
 import types
@@ -264,3 +265,26 @@ def test_multiple_jobs(monkeypatch):
     assert r2.status_code == 200
     assert manager.get_job("job1")["status"] == "completed"
     assert manager.get_job("job2")["status"] == "completed"
+
+
+def test_login_token_contains_exp():
+    client = TestClient(api.app)
+    response = client.post("/login", headers={"X-API-Key": api.settings.api_key})
+    token = response.json()["access_token"]
+    payload = jwt.decode(token, api.settings.secret_key, algorithms=["HS256"])
+    assert "exp" in payload
+    assert payload["exp"] > datetime.utcnow().timestamp()
+
+
+def test_expired_token(monkeypatch):
+    monkeypatch.setattr(api, "job_manager", JobManager(DummyRepository()))
+    client = TestClient(api.app)
+    expired_token = jwt.encode(
+        {"sub": "api", "exp": datetime.utcnow() - timedelta(seconds=1)},
+        api.settings.secret_key,
+        algorithm="HS256",
+    )
+    headers = {"Authorization": f"Bearer {expired_token}"}
+    response = client.get("/status/job123", headers=headers)
+    assert response.status_code == 403
+    assert "expired" in response.json()["detail"].lower()
