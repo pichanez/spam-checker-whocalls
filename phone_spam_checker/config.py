@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     log_format: str = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     log_file: str | None = None
     worker_count: int = 1
+    token_ttl_hours: int = 1
     checker_modules: List[str] = []
     kasp_devices: List[str] = []
     tc_devices: List[str] = []

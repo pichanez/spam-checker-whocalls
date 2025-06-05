@@ -30,6 +30,7 @@ The application loads its configuration from environment variables. The most imp
 - `LOG_FORMAT` – Python logging format string.
 - `LOG_FILE` – optional path to a file where logs will be written.
 - `WORKER_COUNT` – how many background workers process jobs.
+- `TOKEN_TTL_HOURS` – lifetime of issued JWT tokens in hours.
 - `CHECKER_MODULES` – comma-separated list of modules with extra checkers.
 - `USE_REDIS` – set to `1` to enable distributed mode using Redis.
 - `REDIS_HOST` / `REDIS_PORT` – address of the Redis server.
