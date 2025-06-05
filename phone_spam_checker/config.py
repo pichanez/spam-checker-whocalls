@@ -81,3 +81,5 @@ class Settings:
 
 
 settings = Settings.from_env()
+if not settings.api_key or not settings.secret_key:
+    raise RuntimeError("API_KEY and SECRET_KEY environment variables are required")
