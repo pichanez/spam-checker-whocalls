@@ -118,7 +118,7 @@ async def _run_check(
         kasp_nums = []
         tc_nums = numbers
     else:  # auto
-        kasp_nums = [n for n in numbers if re.match(r"^(7|\+7)9", n)]
+        kasp_nums = [n for n in numbers if re.match(r"^(?:7|8)\d{10}$", n)]
         tc_nums = [n for n in numbers if n not in kasp_nums]
 
     # -- ADB device addresses
@@ -321,7 +321,7 @@ async def _run_check_auto(
     kasp_checker = tc_checker = gc_checker = tb_checker = None
     service_map: Dict[str, Dict[str, PhoneCheckResult]] = {n: {} for n in numbers}
 
-    ru_mask = re.compile(r"^(?:\+?7)9")
+    ru_mask = re.compile(r"^(?:\+?7|8)\d{10}$")
     ru_nums_orig = [n for n in numbers if ru_mask.match(n)]
     intl_nums_orig = [n for n in numbers if n not in ru_nums_orig]
 
@@ -473,9 +473,9 @@ def _devices_for_service(service: str) -> List[str]:
     if service == "getcontact":
         return ["getcontact"]
     if service == "tbank":
-        return []
-    # auto uses kaspersky, truecaller and getcontact devices
-    return ["kaspersky", "truecaller", "getcontact"]
+        return ["tbank"]
+    # auto uses kaspersky, truecaller, getcontact and tbank resources
+    return ["kaspersky", "truecaller", "getcontact", "tbank"]
 
 
 def _ensure_no_running(service: str, job_manager: JobManager) -> None:

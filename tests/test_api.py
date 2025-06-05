@@ -376,3 +376,63 @@ async def test_auto_returns_service_results(monkeypatch):
     svcs = {s["service"] for s in res[0]["services"]}
     assert svcs == {"kaspersky", "getcontact", "tbank"}
     assert res[1]["services"][0]["service"] == "truecaller"
+
+
+@pytest.mark.asyncio
+async def test_auto_russian_with_8(monkeypatch):
+    repo = SQLiteJobRepository(":memory:")
+    manager = JobManager(repo)
+    api.app.state.job_manager = manager
+    api.app.state.job_queue = asyncio.Queue()
+
+    called: list[str] = []
+
+    class DummyChecker(PhoneChecker):
+        def __init__(self, device: str, svc: str) -> None:
+            super().__init__(device)
+            self.svc = svc
+
+        def launch_app(self) -> bool:
+            return True
+
+        def close_app(self) -> None:
+            pass
+
+        def check_number(self, phone: str) -> PhoneCheckResult:
+            called.append(self.svc)
+            return PhoneCheckResult(phone_number=phone, status=CheckStatus.SAFE)
+
+    def get_cls(name: str):
+        return lambda device: DummyChecker(device, name)
+
+    monkeypatch.setattr(api.jobs, "get_checker_class", get_cls)
+    monkeypatch.setattr(api.jobs, "_ping_device", lambda *a, **kw: None)
+
+    pools = {
+        "kaspersky": DevicePool(["d1"]),
+        "truecaller": DevicePool(["d2"]),
+        "getcontact": DevicePool(["d3"]),
+        "tbank": DevicePool([]),
+    }
+    api.app.state.device_pools = pools
+
+    job_id = api.jobs._new_job("auto", manager)
+    await api.jobs._run_check_auto(job_id, ["89260000000"], manager)
+    assert "truecaller" not in called
+    res = manager.get_job(job_id)["results"][0]["services"]
+    svcs = {s["service"] for s in res}
+    assert svcs == {"kaspersky", "getcontact", "tbank"}
+
+
+def test_new_job_records_tbank():
+    captured = {}
+
+    class CaptureRepo(DummyRepository):
+        def new_job(self, devices):
+            captured["devices"] = devices
+            return super().new_job(devices)
+
+    manager = JobManager(CaptureRepo())
+    job_id = api.jobs._new_job("auto", manager)
+    assert job_id == "job123"
+    assert "tbank" in captured["devices"]
