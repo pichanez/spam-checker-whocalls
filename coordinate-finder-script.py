@@ -4,6 +4,7 @@
 import subprocess
 import time
 import argparse
+import shlex
 
 def run_adb_command(device_id, command):
     """Run an ADB command on the device.
@@ -15,17 +16,18 @@ def run_adb_command(device_id, command):
     Returns:
         str: Command output or None on error
     """
-    full_command = f"adb -s {device_id} {command}"
+    parts = ["adb", "-s", device_id, *shlex.split(command)]
+    full_command = " ".join(parts)
     print(f"Running command: {full_command}")
     
     try:
         result = subprocess.run(
-            full_command, 
-            shell=True, 
-            check=True, 
-            stdout=subprocess.PIPE, 
+            parts,
+            shell=False,
+            check=True,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
