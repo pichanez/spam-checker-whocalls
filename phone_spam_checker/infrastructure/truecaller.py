@@ -47,7 +47,7 @@ class TruecallerChecker(PhoneChecker):
             logger.error(f"Failed to launch Truecaller: {e}")
             return False
 
-        for btn_text in ("ALLOW", "Allow", "\u0420\u0430\u0437\u0440\u0435\u0448\u0438\u0442\u044c", "ALLOW ALL THE TIME"):
+        for btn_text in ("ALLOW", "Allow", "ALLOW ALL THE TIME"):
             if self.d(text=btn_text).exists(timeout=2):
                 logger.info(f"Clicking system dialog: {btn_text}")
                 self.d(text=btn_text).click()
@@ -124,10 +124,30 @@ def write_results(path: Path, results: list[PhoneCheckResult]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u043d\u044b\u0445 \u043d\u043e\u043c\u0435\u0440\u043e\u0432 \u0447\u0435\u0440\u0435\u0437 Truecaller")
-    parser.add_argument("-i", "--input", type=Path, required=True, help="\u0424\u0430\u0439\u043b \u0441\u043e \u0441\u043f\u0438\u0441\u043a\u043e\u043c \u043d\u043e\u043c\u0435\u0440\u043e\u0432")
-    parser.add_argument("-o", "--output", type=Path, default=Path("results_truecaller.csv"), help="\u041a\u0443\u0434\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u044b")
-    parser.add_argument("-d", "--device", type=str, default="127.0.0.1:5555", help="ID Android-\u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430")
+    parser = argparse.ArgumentParser(
+        description="Phone number lookup via Truecaller"
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=Path,
+        required=True,
+        help="Input file with phone numbers",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("results_truecaller.csv"),
+        help="Output CSV path",
+    )
+    parser.add_argument(
+        "-d",
+        "--device",
+        type=str,
+        default="127.0.0.1:5555",
+        help="Android device ID",
+    )
     args = parser.parse_args()
 
     if not args.input.exists():

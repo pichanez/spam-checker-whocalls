@@ -3,7 +3,7 @@
 """
 Phone Checker API — Kaspersky / Truecaller / GetContact
 
-Запуск:
+Run:
     export API_KEY=supersecret
     uvicorn phone_checker_api:app --host 0.0.0.0 --port 8000
 """
@@ -21,7 +21,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 
-# ─── импорты чекеров ──────────────────────────────────────────────────────────
+# --- checker imports ----------------------------------------------------------
 from phone_spam_checker.infrastructure import (
     KasperskyWhoCallsChecker,
     TruecallerChecker,
@@ -29,7 +29,7 @@ from phone_spam_checker.infrastructure import (
 )
 from phone_spam_checker.domain.models import PhoneCheckResult
 
-# ─── авторизация по API-ключу ─────────────────────────────────────────────────
+# --- API key authorization ----------------------------------------------------
 API_KEY = os.getenv("API_KEY", "")
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
@@ -41,13 +41,13 @@ async def get_api_key(api_key: str = Security(api_key_header)) -> str:
     return api_key
 
 
-# ─── параметры фона ───────────────────────────────────────────────────────────
+# --- background parameters ----------------------------------------------------
 CLEANUP_INTERVAL_SECONDS = 60
 JOB_TTL = timedelta(hours=1)
 jobs: Dict[str, Dict[str, Any]] = {}
 jobs_lock = threading.Lock()
 
-# ─── модели данных (pydantic) ─────────────────────────────────────────────────
+# --- data models (pydantic) ---------------------------------------------------
 class CheckRequest(BaseModel):
     numbers: List[str]
 
@@ -69,14 +69,14 @@ class StatusResponse(BaseModel):
     error: Optional[str] = None
 
 
-# ─── FastAPI ──────────────────────────────────────────────────────────────────
+# --- FastAPI ------------------------------------------------------------------
 app = FastAPI(
     title="Phone Checker API",
     version="2.0",
     dependencies=[Depends(get_api_key)],
 )
 
-# ─── очистка старых задач ─────────────────────────────────────────────────────
+# --- cleanup old jobs --------------------------------------------------------
 async def cleanup_jobs() -> None:
     while True:
         now = datetime.utcnow()
@@ -97,16 +97,16 @@ async def start_cleanup_task() -> None:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 1. Kaspersky + Truecaller  (старый endpoint) ────────────────────────────────
+# 1. Kaspersky + Truecaller  (legacy endpoint) ---------------------------------
 # ═════════════════════════════════════════════════════════════════════════════
 async def _run_check(job_id: str, numbers: List[str]) -> None:
     numbers = [num.lstrip("+") for num in numbers]
 
-    # распределяем, что куда
+    # distribute numbers between checkers
     kasp_nums = [n for n in numbers if re.match(r"^(7|\+7)9", n)]
     tc_nums = [n for n in numbers if n not in kasp_nums]
 
-    # ── адреса ADB-устройств ────────────────────────────────────────────
+    # -- ADB device addresses --------------------------------------------
     kasp_device = f"{os.getenv('KASP_ADB_HOST', '127.0.0.1')}:{os.getenv('KASP_ADB_PORT', '5555')}"
     tc_device = f"{os.getenv('TC_ADB_HOST', '127.0.0.1')}:{os.getenv('TC_ADB_PORT', '5556')}"
 
@@ -115,7 +115,7 @@ async def _run_check(job_id: str, numbers: List[str]) -> None:
     loop = asyncio.get_event_loop()
 
     try:
-        # ── инициализация устройств ────────────────────────────────────
+        # -- device initialization --------------------------------------
         if kasp_nums:
             _ping_device(*kasp_device.split(":"))
             kasp_checker = KasperskyWhoCallsChecker(kasp_device)
@@ -128,7 +128,7 @@ async def _run_check(job_id: str, numbers: List[str]) -> None:
             if not tc_checker.launch_app():
                 raise RuntimeError("Failed to launch Truecaller")
 
-        # ── параллельная проверка ───────────────────────────────────────
+        # -- parallel checking -------------------------------------------
         tasks = []
         if kasp_nums:
             tasks.append(loop.run_in_executor(None, lambda: [kasp_checker.check_number(n) for n in kasp_nums]))
@@ -137,7 +137,7 @@ async def _run_check(job_id: str, numbers: List[str]) -> None:
 
         grouped = await asyncio.gather(*tasks)
 
-        # ── мёрдж результатов ��������������������������������������������
+        # -- merge results ---------------------------------------------------
         merged: Dict[str, Any] = {r.phone_number: r for group in grouped for r in group}
         for num in numbers:
             r = merged.get(num)
@@ -158,11 +158,11 @@ async def _run_check(job_id: str, numbers: List[str]) -> None:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 2. GetContact  (НОВЫЙ endpoint) ─────────────────────────────────────────────
+# 2. GetContact  (new endpoint) -----------------------------------------------
 # ═════════════════════════════════════════════════════════════════════════════
 async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
-    # GetContact сам добавит «+», но вычищаем дубли
-    uniq_numbers = list(dict.fromkeys(numbers))  # сохраняем порядок
+    # GetContact will add '+' itself; remove duplicates
+    uniq_numbers = list(dict.fromkeys(numbers))  # preserve order
     gc_device = f"{os.getenv('GC_ADB_HOST', '127.0.0.1')}:{os.getenv('GC_ADB_PORT', '5557')}"
     checker: Optional[GetContactChecker] = None
     results: List[CheckResult] = []
@@ -174,7 +174,7 @@ async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
         if not checker.launch_app():
             raise RuntimeError("Failed to launch GetContact")
 
-        # Проверка (CPU-bound → executor)
+        # Checking (CPU-bound -> executor)
         raw: List[PhoneCheckResult] = await loop.run_in_executor(
             None, lambda: [checker.check_number(n) for n in uniq_numbers]
         )
@@ -193,7 +193,7 @@ async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
             await loop.run_in_executor(None, checker.close_app)
 
 
-# ─── endpoint’ы ───────────────────────────────────────────────────────────────
+# --- endpoints ---------------------------------------------------------------
 @app.post("/check_numbers", response_model=JobResponse)
 def submit_check(
     request: CheckRequest, background_tasks: BackgroundTasks, _: str = Depends(get_api_key)
@@ -204,7 +204,7 @@ def submit_check(
     return JobResponse(job_id=job_id)
 
 
-@app.post("/check_numbers_gc", response_model=JobResponse)         # ← НОВЫЙ
+@app.post("/check_numbers_gc", response_model=JobResponse)         # NEW
 def submit_check_gc(
     request: CheckRequest, background_tasks: BackgroundTasks, _: str = Depends(get_api_key)
 ) -> JobResponse:
@@ -228,7 +228,7 @@ def get_status(job_id: str, _: str = Depends(get_api_key)) -> StatusResponse:
     )
 
 
-# ─── вспомогательные функции ─────────────────────────────────────────────────
+# --- helper functions --------------------------------------------------------
 def _ping_device(host: str, port: str, timeout: int = 5) -> None:
     try:
         with socket.create_connection((host, int(port)), timeout=timeout):

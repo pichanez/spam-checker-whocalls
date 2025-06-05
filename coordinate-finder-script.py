@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Скрипт для получения скриншота и определения координат элементов интерфейса.
-"""
+"""Utility for capturing a screenshot and locating UI element coordinates."""
 
 import subprocess
 import os
@@ -9,18 +7,17 @@ import time
 import argparse
 
 def run_adb_command(device_id, command):
-    """
-    Выполнить команду ADB на устройстве.
-    
+    """Run an ADB command on the device.
+
     Args:
-        device_id (str): ID устройства
-        command (str): Команда ADB без префикса 'adb -s device_id'
-        
+        device_id (str): Device ID
+        command (str): Command without the 'adb -s device_id' prefix
+
     Returns:
-        str: Вывод команды или None в случае ошибки
+        str: Command output or None on error
     """
     full_command = f"adb -s {device_id} {command}"
-    print(f"Выполнение команды: {full_command}")
+    print(f"Running command: {full_command}")
     
     try:
         result = subprocess.run(
@@ -33,101 +30,110 @@ def run_adb_command(device_id, command):
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
-        print(f"Ошибка при выполнении команды ADB: {e}")
+        print(f"ADB command failed: {e}")
         print(f"STDERR: {e.stderr}")
         return None
 
 def capture_screenshot(device_id, output_path="screen.png"):
-    """
-    Сделать скриншот экрана устройства и сохранить его на компьютере.
-    
+    """Take a screenshot on the device and save it locally.
+
     Args:
-        device_id (str): ID устройства
-        output_path (str): Путь для сохранения скриншота
-        
+        device_id (str): Device ID
+        output_path (str): Path to save the screenshot
+
     Returns:
-        bool: True если скриншот сделан успешно, иначе False
+        bool: True on success, otherwise False
     """
-    # Проверяем, какие директории доступны для записи
-    print("Проверка доступных директорий...")
+    # Check which directories are writable
+    print("Checking writable directories...")
     directories = ["/data/local/tmp", "/data", "/tmp", "/storage/emulated/0"]
     
     for directory in directories:
         check_cmd = f"shell '[ -w \"{directory}\" ] && echo \"writable\" || echo \"not writable\"'"
         result = run_adb_command(device_id, check_cmd)
-        print(f"Директория {directory}: {result.strip() if result else 'ошибка проверки'}")
+        print(f"Directory {directory}: {result.strip() if result else 'check failed'}")
     
-    # Попробуем использовать /data/local/tmp вместо /sdcard
+    # Use /data/local/tmp instead of /sdcard
     remote_path = "/data/local/tmp/screen.png"
     
-    # Сделать скриншот и сохранить его на устройстве
+    # Take screenshot and store on the device
     screenshot_cmd = f"shell screencap -p {remote_path}"
     if run_adb_command(device_id, screenshot_cmd) is None:
         return False
     
-    # Скопировать скриншот с устройства на компьютер
+    # Pull screenshot from the device
     pull_cmd = f"pull {remote_path} {output_path}"
     if run_adb_command(device_id, pull_cmd) is None:
         return False
     
-    print(f"Скриншот сохранен в {output_path}")
+    print(f"Screenshot saved to {output_path}")
     return True
 
 def get_ui_dump(device_id, output_path="ui_dump.xml"):
-    """
-    Получить XML-дамп интерфейса устройства и сохранить его на компьютере.
-    
+    """Get the device UI dump and save it locally.
+
     Args:
-        device_id (str): ID устройства
-        output_path (str): Путь для сохранения XML-дампа
-        
+        device_id (str): Device ID
+        output_path (str): Path to save the XML dump
+
     Returns:
-        bool: True если дамп получен успешно, иначе False
+        bool: True on success, otherwise False
     """
-    # Используем /data/local/tmp вместо /sdcard
+    # Use /data/local/tmp instead of /sdcard
     remote_path = "/data/local/tmp/ui_dump.xml"
     
-    # Запустить uiautomator dump на устройстве
+    # Run uiautomator dump on the device
     dump_cmd = f"shell uiautomator dump {remote_path}"
     if run_adb_command(device_id, dump_cmd) is None:
         return False
     
-    # Скопировать XML-дамп с устройства на компьютер
+    # Pull XML dump from the device
     pull_cmd = f"pull {remote_path} {output_path}"
     if run_adb_command(device_id, pull_cmd) is None:
         return False
     
-    print(f"UI-дамп сохранен в {output_path}")
+    print(f"UI dump saved to {output_path}")
     return True
 
 def launch_app(device_id, package_name, activity_name):
-    """
-    Запустить приложение на устройстве.
-    
+    """Launch an application on the device.
+
     Args:
-        device_id (str): ID устройства
-        package_name (str): Имя пакета приложения
-        activity_name (str): Имя активности
-        
+        device_id (str): Device ID
+        package_name (str): Application package name
+        activity_name (str): Activity name
+
     Returns:
-        bool: True если приложение запущено успешно, иначе False
+        bool: True if the app was started successfully, otherwise False
     """
     launch_cmd = f"shell am start -n {package_name}/{activity_name}"
     result = run_adb_command(device_id, launch_cmd)
     
     if result and "Error" not in result:
-        print("Приложение запущено успешно")
-        time.sleep(2)  # Даем приложению время на загрузку
+        print("Application started successfully")
+        time.sleep(2)  # Give the app time to load
         return True
     else:
-        print("Не удалось запустить приложение")
+        print("Failed to start application")
         return False
 
 def main():
-    """Основная функция для запуска скрипта"""
-    parser = argparse.ArgumentParser(description='Получение скриншота и UI-дампа для определения координат')
-    parser.add_argument('--device', '-d', default='127.0.0.1:5555', help='ID устройства в формате IP:порт')
-    parser.add_argument('--launch', '-l', action='store_true', help='Запустить приложение перед получением данных')
+    """Main function of the script."""
+    parser = argparse.ArgumentParser(
+        description='Capture screenshot and UI dump to determine coordinates'
+    )
+    parser.add_argument(
+        '--device',
+        '-d',
+        default='127.0.0.1:5555',
+        help='Device ID in IP:port format',
+    )
+    parser.add_argument(
+        '--launch',
+        '-l',
+        action='store_true',
+        help='Launch the app before capturing data',
+    )
     
     args = parser.parse_args()
     
@@ -136,21 +142,21 @@ def main():
         activity_name = ".LauncherActivityAlias"
         launch_app(args.device, package_name, activity_name)
     
-    # Получение скриншота
+    # Take screenshot
     timestamp = int(time.time())
     screenshot_path = f"screen_{timestamp}.png"
     if not capture_screenshot(args.device, screenshot_path):
-        print("Не удалось получить скриншот")
+        print("Failed to capture screenshot")
     
-    # Получение UI-дампа
+    # Get UI dump
     ui_dump_path = f"ui_dump_{timestamp}.xml"
     if not get_ui_dump(args.device, ui_dump_path):
-        print("Не удалось получить UI-дамп")
+        print("Failed to get UI dump")
     
-    print("\nДля определения координат элементов:")
-    print(f"1. Откройте скриншот {screenshot_path} в графическом редакторе")
-    print("2. Наведите курсор на нужный элемент, чтобы увидеть его координаты")
-    print(f"3. Откройте UI-дамп {ui_dump_path} в текстовом редакторе для получения дополнительной информации об элементах")
+    print("\nTo determine element coordinates:")
+    print(f"1. Open screenshot {screenshot_path} in an image editor")
+    print("2. Hover over the desired element to see its coordinates")
+    print(f"3. Open UI dump {ui_dump_path} in a text editor for additional element info")
     
     return 0
 

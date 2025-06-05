@@ -9,14 +9,14 @@ services:
     env_file:
       - .env
     ports:
-      # FastAPI HTTP API доступен извне
+      # FastAPI HTTP API exposed
       - "8000:8000"
     volumes:
-      # Монтируем каталог проекта внутрь контейнера для разработки
+      # Mount project directory inside container for development
       - ./:/app:delegated
     restart: unless-stopped
     environment:
-      # Передваем переменные окружения в контейнер
+      # Pass environment variables to the container
       - API_KEY=${API_KEY}
       - KASP_ADB_HOST=${KASP_ADB_HOST}
       - KASP_ADB_PORT=${KASP_ADB_PORT}
@@ -25,7 +25,7 @@ services:
       - GC_ADB_HOST=${GC_ADB_HOST}
       - GC_ADB_PORT=${GC_ADB_PORT}
 
-# Файл .env рядом с этим compose:
+# .env file next to this compose:
 # API_KEY=your-super-secret-key
 # ADB_HOST=127.0.0.1
 # ADB_PORT=5555
