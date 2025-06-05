@@ -19,6 +19,9 @@ The application loads its configuration from environment variables. The most imp
 - `KASP_ADB_HOST` / `KASP_ADB_PORT` – address of the device with Kaspersky Who Calls.
 - `TC_ADB_HOST` / `TC_ADB_PORT` – address of the device with Truecaller.
 - `GC_ADB_HOST` / `GC_ADB_PORT` – address of the device with GetContact.
+- `KASP_DEVICES` – comma-separated list of Kaspersky device addresses.
+- `TC_DEVICES` – comma-separated list of Truecaller device addresses.
+- `GC_DEVICES` – comma-separated list of GetContact device addresses.
 - `JOB_DB_PATH` – path to the SQLite file storing job statuses.
 - `PG_HOST` / `PG_PORT` – address of the Postgres server.
 - `PG_DB` – database name.
@@ -28,6 +31,10 @@ The application loads its configuration from environment variables. The most imp
 - `LOG_FILE` – optional path to a file where logs will be written.
 - `WORKER_COUNT` – how many background workers process jobs.
 - `CHECKER_MODULES` – comma-separated list of modules with extra checkers.
+
+`*_DEVICES` variables override the single `*_ADB_HOST`/`*_ADB_PORT` settings and
+allow specifying multiple devices separated by commas. If not set, the host/port
+values are used.
 
 Values can be provided in an `.env` file which is read by `docker-compose`.
 

@@ -30,6 +30,7 @@ from phone_spam_checker.job_manager import (
 )
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
+from phone_spam_checker.device_pool import DevicePool
 
 # --- checker imports ----------------------------------------------------------
 from phone_spam_checker.registry import (
@@ -85,6 +86,8 @@ else:
     job_repo = SQLiteJobRepository(settings.job_db_path)
 job_manager = JobManager(job_repo)
 job_queue: asyncio.Queue[tuple[str, List[str], str]] = asyncio.Queue()
+device_pools: Dict[str, DevicePool] = {}
+job_devices: Dict[str, Dict[str, str]] = {}
 
 
 async def enqueue_job(job_id: str, numbers: List[str], service: str) -> None:
@@ -95,12 +98,21 @@ async def enqueue_job(job_id: str, numbers: List[str], service: str) -> None:
 async def _worker() -> None:
     while True:
         job_id, numbers, service = await job_queue.get()
+        devices = job_devices.pop(job_id, {})
         try:
             if service == "getcontact":
-                await _run_check_gc(job_id, numbers)
+                await _run_check_gc(job_id, numbers, devices.get("getcontact"))
             else:
-                await _run_check(job_id, numbers, service)
+                await _run_check(
+                    job_id,
+                    numbers,
+                    service,
+                    kasp_device=devices.get("kaspersky"),
+                    tc_device=devices.get("truecaller"),
+                )
         finally:
+            for svc, dev in devices.items():
+                device_pools[svc].release(dev)
             job_queue.task_done()
 
 
@@ -167,13 +179,14 @@ async def cleanup_jobs() -> None:
 @app.on_event("startup")
 async def start_background_tasks() -> None:
     asyncio.create_task(cleanup_jobs())
-    device_count = len(
+    device_pools.update(
         {
-            f"{settings.kasp_adb_host}:{settings.kasp_adb_port}",
-            f"{settings.tc_adb_host}:{settings.tc_adb_port}",
-            f"{settings.gc_adb_host}:{settings.gc_adb_port}",
+            "kaspersky": DevicePool(settings.kasp_devices),
+            "truecaller": DevicePool(settings.tc_devices),
+            "getcontact": DevicePool(settings.gc_devices),
         }
     )
+    device_count = sum(len(pool) for pool in device_pools.values())
     num_workers = settings.worker_count or device_count
     for _ in range(num_workers):
         asyncio.create_task(_worker())
@@ -182,7 +195,14 @@ async def start_background_tasks() -> None:
 # ═════════════════════════════════════════════════════════════════════════════
 # 1. Kaspersky / Truecaller ----------------------------------------------------
 # ═════════════════════════════════════════════════════════════════════════════
-async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
+async def _run_check(
+    job_id: str,
+    numbers: List[str],
+    service: str,
+    *,
+    kasp_device: Optional[str] = None,
+    tc_device: Optional[str] = None,
+) -> None:
     numbers = [num.lstrip("+") for num in numbers]
     logger.info("Job %s started for %d numbers via %s", job_id, len(numbers), service)
     start_ts = asyncio.get_event_loop().time()
@@ -198,8 +218,8 @@ async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
         tc_nums = [n for n in numbers if n not in kasp_nums]
 
     # -- ADB device addresses --------------------------------------------
-    kasp_device = f"{settings.kasp_adb_host}:{settings.kasp_adb_port}"
-    tc_device = f"{settings.tc_adb_host}:{settings.tc_adb_port}"
+    kasp_device = kasp_device or f"{settings.kasp_adb_host}:{settings.kasp_adb_port}"
+    tc_device = tc_device or f"{settings.tc_adb_host}:{settings.tc_adb_port}"
 
     kasp_checker = tc_checker = None
     results: List[CheckResult] = []
@@ -272,10 +292,12 @@ async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
 # ═════════════════════════════════════════════════════════════════════════════
 # 2. GetContact ---------------------------------------------------------------
 # ═════════════════════════════════════════════════════════════════════════════
-async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
+async def _run_check_gc(
+    job_id: str, numbers: List[str], gc_device: Optional[str] = None
+) -> None:
     # GetContact will add '+' itself; remove duplicates
     uniq_numbers = list(dict.fromkeys(numbers))  # preserve order
-    gc_device = f"{settings.gc_adb_host}:{settings.gc_adb_port}"
+    gc_device = gc_device or f"{settings.gc_adb_host}:{settings.gc_adb_port}"
     logger.info("Job %s started for %d numbers via getcontact", job_id, len(numbers))
     start_ts = asyncio.get_event_loop().time()
     checker_cls = get_checker_class("getcontact")
@@ -320,8 +342,10 @@ def submit_check(
     background_tasks: BackgroundTasks,
     _: str = Depends(get_token),
 ) -> JobResponse:
-    _ensure_no_running(request.service)
-    job_id = _new_job(request.service)
+    try:
+        job_id = _new_job(request.service)
+    except JobAlreadyRunningError as e:
+        raise HTTPException(status_code=429, detail=str(e)) from e
     logger.info(
         "Received job %s: %d numbers via %s",
         job_id,
@@ -378,7 +402,21 @@ def _ensure_no_running(service: str) -> None:
         raise HTTPException(status_code=429, detail=str(e)) from e
 
 def _new_job(service: str) -> str:
-    job_id = job_manager.new_job(_devices_for_service(service))
+    devices = {}
+    try:
+        if service in {"kaspersky", "auto"}:
+            devices["kaspersky"] = device_pools["kaspersky"].acquire()
+        if service in {"truecaller", "auto"}:
+            devices["truecaller"] = device_pools["truecaller"].acquire()
+        if service == "getcontact":
+            devices["getcontact"] = device_pools["getcontact"].acquire()
+    except JobAlreadyRunningError:
+        for svc, dev in devices.items():
+            device_pools[svc].release(dev)
+        raise
+
+    job_id = job_manager.new_job(list(devices.values()))
+    job_devices[job_id] = devices
     logger.debug("Created job %s", job_id)
     return job_id
 

@@ -204,12 +204,10 @@ def test_job_failed_when_device_unreachable(monkeypatch):
 
 
 def test_job_already_running(monkeypatch):
-    class BusyJobManager(DummyJobManager):
-        def ensure_no_running(self, device):
-            raise api.JobAlreadyRunningError("Previous task is still in progress")
+    def busy_new_job(service):
+        raise api.JobAlreadyRunningError("Previous task is still in progress")
 
-    monkeypatch.setattr(api, "job_manager", BusyJobManager())
-    monkeypatch.setattr(api, "_new_job", lambda service: "job123")
+    monkeypatch.setattr(api, "_new_job", busy_new_job)
 
     client = TestClient(api.app)
     headers = _auth_header(client)
