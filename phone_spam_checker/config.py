@@ -22,11 +22,23 @@ class Settings:
     gc_adb_host: str = "127.0.0.1"
     gc_adb_port: str = "5557"
     job_db_path: str = "jobs.sqlite"
+    pg_host: str = ""
+    pg_port: str = "5432"
+    pg_db: str = "phonechecker"
+    pg_user: str = "postgres"
+    pg_password: str = "postgres"
     log_level: str = "INFO"
     log_format: str = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     log_file: str | None = None
     worker_count: int = 1
     checker_modules: list[str] = field(default_factory=list)
+
+    @property
+    def pg_dsn(self) -> str:
+        return (
+            f"postgresql+psycopg2://{self.pg_user}:{self.pg_password}"
+            f"@{self.pg_host}:{self.pg_port}/{self.pg_db}"
+        )
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -40,6 +52,11 @@ class Settings:
             gc_adb_host=_getenv("GC_ADB_HOST", "127.0.0.1"),
             gc_adb_port=_getenv("GC_ADB_PORT", "5557"),
             job_db_path=_getenv("JOB_DB_PATH", "jobs.sqlite"),
+            pg_host=_getenv("PG_HOST", ""),
+            pg_port=_getenv("PG_PORT", "5432"),
+            pg_db=_getenv("PG_DB", "phonechecker"),
+            pg_user=_getenv("PG_USER", "postgres"),
+            pg_password=_getenv("PG_PASSWORD", "postgres"),
             log_level=_getenv("LOG_LEVEL", "INFO"),
             log_format=_getenv(
                 "LOG_FORMAT", "%(asctime)s %(levelname)s %(name)s: %(message)s"

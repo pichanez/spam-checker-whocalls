@@ -3,6 +3,19 @@ import json
 import sqlite3
 import threading
 import uuid
+from sqlalchemy import (
+    create_engine,
+    MetaData,
+    Table,
+    Column,
+    String,
+    Text,
+    DateTime,
+    select,
+    insert,
+    update,
+)
+from sqlalchemy.engine import Engine
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Protocol
@@ -149,6 +162,129 @@ class SQLiteJobRepository(JobRepository):
                 "DELETE FROM jobs WHERE created_at < ?", (limit.isoformat(),)
             )
             self._db.commit()
+
+
+class PostgresJobRepository(JobRepository):
+    """Job repository backed by a PostgreSQL database."""
+
+    JOB_TTL = timedelta(hours=1)
+
+    def __init__(self, dsn: str) -> None:
+        self._lock = threading.Lock()
+        self._engine: Engine = create_engine(dsn)
+        metadata = MetaData()
+        self._table = Table(
+            "jobs",
+            metadata,
+            Column("job_id", String, primary_key=True),
+            Column("status", String),
+            Column("devices", String),
+            Column("results", Text),
+            Column("error", Text),
+            Column("created_at", DateTime),
+        )
+        metadata.create_all(self._engine)
+
+    def new_job(self, devices: List[str]) -> str:
+        job_id = uuid.uuid4().hex
+        devices_str = ",".join(devices)
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(
+                insert(self._table).values(
+                    job_id=job_id,
+                    status="in_progress",
+                    devices=devices_str,
+                    results=None,
+                    error=None,
+                    created_at=datetime.utcnow(),
+                )
+            )
+        return job_id
+
+    def complete_job(self, job_id: str, results: List[PhoneCheckResult]) -> None:
+        serializable = []
+        for r in results:
+            if is_dataclass(r):
+                item = asdict(r)
+            elif hasattr(r, "dict"):
+                item = r.dict()
+            else:
+                item = dict(r)
+            status = item.get("status")
+            if hasattr(status, "value"):
+                item["status"] = status.value
+            serializable.append(item)
+        results_json = json.dumps(serializable)
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(
+                update(self._table)
+                .where(self._table.c.job_id == job_id)
+                .values(status="completed", results=results_json)
+            )
+
+    def fail_job(self, job_id: str, error: str) -> None:
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(
+                update(self._table)
+                .where(self._table.c.job_id == job_id)
+                .values(status="failed", error=error)
+            )
+
+    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._engine.begin() as conn:
+            row = conn.execute(
+                select(
+                    self._table.c.status,
+                    self._table.c.results,
+                    self._table.c.error,
+                    self._table.c.created_at,
+                ).where(self._table.c.job_id == job_id)
+            ).first()
+        if not row:
+            return None
+        status, results_json, error, created_at = row
+        results = None
+        if results_json:
+            try:
+                data = json.loads(results_json)
+                for entry in data:
+                    status_val = entry.get("status")
+                    if isinstance(status_val, str):
+                        try:
+                            entry["status"] = CheckStatus(status_val)
+                        except Exception:
+                            pass
+                results = [PhoneCheckResult(**entry) for entry in data]
+            except Exception:
+                results = None
+        return {
+            "status": status,
+            "results": results,
+            "error": error,
+            "created_at": created_at,
+        }
+
+    def ensure_no_running(self, device: str) -> None:
+        with self._lock, self._engine.begin() as conn:
+            row = conn.execute(
+                select(self._table.c.job_id)
+                .where(
+                    (self._table.c.status == "in_progress")
+                    & (self._table.c.devices.like(f"%{device}%"))
+                )
+                .limit(1)
+            ).first()
+        if row:
+            raise JobAlreadyRunningError(
+                f"Previous task is still in progress for {device}"
+            )
+
+    def cleanup(self) -> None:
+        limit = datetime.utcnow() - self.JOB_TTL
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(
+                self._table.delete().where(self._table.c.created_at < limit)
+            )
 
 
 class JobManager:
