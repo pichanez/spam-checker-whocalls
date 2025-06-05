@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from phone_spam_checker.config import settings
 from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
-from .schemas import CheckResult
+from .schemas import CheckResult, ServiceResult
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.exceptions import DeviceConnectionError, JobAlreadyRunningError
 from phone_spam_checker.job_manager import JobManager
@@ -170,13 +170,19 @@ async def _run_check(
             if r:
                 results.append(
                     CheckResult(
-                        phone_number=r.phone_number, status=r.status, details=r.details
+                        phone_number=r.phone_number,
+                        status=r.status,
+                        details=r.details,
+                        services=[ServiceResult(service=service, status=r.status, details=r.details)],
                     )
                 )
             else:
                 results.append(
                     CheckResult(
-                        phone_number=num, status=CheckStatus.ERROR, details="No result"
+                        phone_number=num,
+                        status=CheckStatus.ERROR,
+                        details="No result",
+                        services=[ServiceResult(service=service, status=CheckStatus.ERROR, details="No result")],
                     )
                 )
 
@@ -227,7 +233,10 @@ async def _run_check_gc(
         for r in raw:
             results.append(
                 CheckResult(
-                    phone_number=r.phone_number, status=r.status, details=r.details
+                    phone_number=r.phone_number,
+                    status=r.status,
+                    details=r.details,
+                    services=[ServiceResult(service="getcontact", status=r.status, details=r.details)],
                 )
             )
 
@@ -269,7 +278,12 @@ async def _run_check_tbank(
 
         for r in raw:
             results.append(
-                CheckResult(phone_number=r.phone_number, status=r.status, details=r.details)
+                CheckResult(
+                    phone_number=r.phone_number,
+                    status=r.status,
+                    details=r.details,
+                    services=[ServiceResult(service="tbank", status=r.status, details=r.details)],
+                )
             )
 
     except Exception as e:
@@ -305,7 +319,7 @@ async def _run_check_auto(
     tb_cls = get_checker_class("tbank")
 
     kasp_checker = tc_checker = gc_checker = tb_checker = None
-    results_map: Dict[str, List[PhoneCheckResult]] = {n: [] for n in numbers}
+    service_map: Dict[str, Dict[str, PhoneCheckResult]] = {n: {} for n in numbers}
 
     ru_mask = re.compile(r"^(?:\+?7)9")
     ru_nums_orig = [n for n in numbers if ru_mask.match(n)]
@@ -371,21 +385,22 @@ async def _run_check_auto(
                 res[orig] = r
             return res
 
-        tasks = []
+        tasks: List[tuple[str, asyncio.Future]] = []
         if kasp_nums:
-            tasks.append(run_kaspersky())
+            tasks.append(("kaspersky", asyncio.create_task(run_kaspersky())))
         if gc_nums:
-            tasks.append(run_getcontact())
+            tasks.append(("getcontact", asyncio.create_task(run_getcontact())))
         if tb_nums:
-            tasks.append(run_tbank())
+            tasks.append(("tbank", asyncio.create_task(run_tbank())))
         if tc_nums:
-            tasks.append(run_truecaller())
+            tasks.append(("truecaller", asyncio.create_task(run_truecaller())))
 
-        for mapping in await asyncio.gather(*tasks):
+        for svc, fut in tasks:
+            mapping = await fut
             for orig, r in mapping.items():
-                results_map[orig].append(r)
+                service_map[orig][svc] = r
 
-        def pick_best(phone: str, items: List[PhoneCheckResult]) -> CheckResult:
+        def pick_best(phone: str, items: Dict[str, PhoneCheckResult]) -> CheckResult:
             priority = {
                 CheckStatus.SPAM: 4,
                 CheckStatus.SAFE: 3,
@@ -393,12 +408,32 @@ async def _run_check_auto(
                 CheckStatus.UNKNOWN: 1,
                 CheckStatus.ERROR: 0,
             }
-            best = max(items, key=lambda x: priority[x.status]) if items else None
+            best = None
+            for r in items.values():
+                if best is None or priority[r.status] > priority[best.status]:
+                    best = r
             if not best:
-                return CheckResult(phone_number=phone, status=CheckStatus.ERROR, details="No result")
-            return CheckResult(phone_number=phone, status=best.status, details=best.details)
+                services = []
+            else:
+                services = [
+                    ServiceResult(service=s, status=res.status, details=res.details)
+                    for s, res in items.items()
+                ]
+            if not best:
+                return CheckResult(
+                    phone_number=phone,
+                    status=CheckStatus.ERROR,
+                    details="No result",
+                    services=services,
+                )
+            return CheckResult(
+                phone_number=phone,
+                status=best.status,
+                details=best.details,
+                services=services,
+            )
 
-        final_results = [pick_best(num, results_map[num]) for num in numbers]
+        final_results = [pick_best(num, service_map[num]) for num in numbers]
 
     except Exception as e:
         logger.error("Job %s failed: %s", job_id, e)

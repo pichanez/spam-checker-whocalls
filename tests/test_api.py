@@ -20,10 +20,13 @@ os.environ.setdefault("SECRET_KEY", "secret")
 
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
-from phone_spam_checker.job_manager import JobRepository, JobManager
+from phone_spam_checker.job_manager import JobRepository, JobManager, SQLiteJobRepository
 from phone_spam_checker.dependencies import get_job_manager
 import phone_spam_checker.dependencies as deps
 from phone_spam_checker.exceptions import JobAlreadyRunningError, DeviceConnectionError
+from phone_spam_checker.device_pool import DevicePool
+from phone_spam_checker.domain.phone_checker import PhoneChecker
+from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
 
 configure_logging(
     level=settings.log_level,
@@ -323,3 +326,53 @@ def test_token_contains_claims():
     assert payload["aud"] == settings.token_audience
     assert payload["iss"] == settings.token_issuer
     assert payload["sub"] == "api"
+
+
+@pytest.mark.asyncio
+async def test_auto_returns_service_results(monkeypatch):
+    repo = SQLiteJobRepository(":memory:")
+    manager = JobManager(repo)
+    api.app.state.job_manager = manager
+    api.app.state.job_queue = asyncio.Queue()
+
+    class DummyChecker(PhoneChecker):
+        def __init__(self, device: str, svc: str) -> None:
+            super().__init__(device)
+            self.svc = svc
+
+        def launch_app(self) -> bool:
+            return True
+
+        def close_app(self) -> None:
+            pass
+
+        def check_number(self, phone: str) -> PhoneCheckResult:
+            mapping = {
+                "kaspersky": CheckStatus.SAFE,
+                "getcontact": CheckStatus.NOT_IN_DB,
+                "tbank": CheckStatus.SPAM,
+                "truecaller": CheckStatus.SAFE,
+            }
+            return PhoneCheckResult(phone_number=phone, status=mapping[self.svc])
+
+    def get_cls(name: str):
+        return lambda device: DummyChecker(device, name)
+
+    monkeypatch.setattr(api.jobs, "get_checker_class", get_cls)
+    monkeypatch.setattr(api.jobs, "_ping_device", lambda *a, **kw: None)
+
+    pools = {
+        "kaspersky": DevicePool(["d1"]),
+        "truecaller": DevicePool(["d2"]),
+        "getcontact": DevicePool(["d3"]),
+        "tbank": DevicePool([]),
+    }
+    api.app.state.device_pools = pools
+
+    job_id = api.jobs._new_job("auto", manager)
+    await api.jobs._run_check_auto(job_id, ["79100000000", "+123"], manager)
+    res = manager.get_job(job_id)["results"]
+    assert res[0]["services"]
+    svcs = {s["service"] for s in res[0]["services"]}
+    assert svcs == {"kaspersky", "getcontact", "tbank"}
+    assert res[1]["services"][0]["service"] == "truecaller"
