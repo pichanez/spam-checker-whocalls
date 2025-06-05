@@ -2,7 +2,7 @@ import argparse
 import logging
 from pathlib import Path
 
-import uiautomator2 as u2
+from ..device_client import AndroidDeviceClient
 
 from ..domain.models import PhoneCheckResult
 from ..domain.phone_checker import PhoneChecker
@@ -27,20 +27,12 @@ logger = logging.getLogger(__name__)
 class KasperskyWhoCallsChecker(PhoneChecker):
     def __init__(self, device: str) -> None:
         super().__init__(device)
-        logger.info(f"Connected to device {device}")
-        self.d = u2.connect(device)
-        for fn in ("screen_on", "unlock"):
-            try:
-                getattr(self.d, fn)()
-            except Exception:
-                pass
+        self.client = AndroidDeviceClient(device)
+        self.d = self.client.d
 
     def launch_app(self) -> bool:
         logger.info("Launching application")
-        try:
-            self.d.app_start(APP_PACKAGE, activity=APP_ACTIVITY)
-        except Exception as e:
-            logger.error(f"Failed to launch application: {e}")
+        if not self.client.start_app(APP_PACKAGE, APP_ACTIVITY):
             return False
 
         btn = self.d(**LOC_BTN_CHECK_NUMBER)
@@ -56,7 +48,7 @@ class KasperskyWhoCallsChecker(PhoneChecker):
 
     def close_app(self) -> None:
         logger.info("Closing application")
-        self.d.app_stop(APP_PACKAGE)
+        self.client.stop_app(APP_PACKAGE)
 
     def check_number(self, phone: str) -> PhoneCheckResult:
         logger.info(f"Checking number: {phone}")

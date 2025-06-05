@@ -13,6 +13,7 @@ from .infrastructure import (  # noqa: F401
 )
 from .job_manager import JobManager
 from .logging_config import configure_logging
+from .device_client import AndroidDeviceClient
 from .config import settings
 
 __all__ = [
@@ -26,5 +27,6 @@ __all__ = [
     "GetContactChecker",
     "JobManager",
     "configure_logging",
+    "AndroidDeviceClient",
     "settings",
 ]

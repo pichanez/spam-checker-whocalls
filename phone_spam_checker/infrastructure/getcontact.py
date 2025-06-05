@@ -2,7 +2,7 @@ import argparse
 import logging
 from pathlib import Path
 
-import uiautomator2 as u2
+from ..device_client import AndroidDeviceClient
 
 from ..domain.models import PhoneCheckResult
 from ..domain.phone_checker import PhoneChecker
@@ -32,20 +32,12 @@ logger = logging.getLogger(__name__)
 class GetContactChecker(PhoneChecker):
     def __init__(self, device: str) -> None:
         super().__init__(device)
-        logger.info(f"Connecting to device {device}")
-        self.d = u2.connect(device)
-        for fn in ("screen_on", "unlock"):
-            try:
-                getattr(self.d, fn)()
-            except Exception:
-                pass
+        self.client = AndroidDeviceClient(device)
+        self.d = self.client.d
 
     def launch_app(self) -> bool:
         logger.info("Launching GetContact")
-        try:
-            self.d.app_start(APP_PACKAGE, activity=APP_ACTIVITY)
-        except Exception as e:
-            logger.error(f"Failed to launch GetContact: {e}")
+        if not self.client.start_app(APP_PACKAGE, APP_ACTIVITY):
             return False
 
         if not self.d(**LOC_SEARCH_HINT).wait(timeout=8):
@@ -60,7 +52,7 @@ class GetContactChecker(PhoneChecker):
 
     def close_app(self) -> None:
         logger.info("Closing GetContact")
-        self.d.app_stop(APP_PACKAGE)
+        self.client.stop_app(APP_PACKAGE)
 
     def check_number(self, phone: str) -> PhoneCheckResult:
         if not phone.startswith("+"):
