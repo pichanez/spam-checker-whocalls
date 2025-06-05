@@ -19,17 +19,9 @@ from phone_spam_checker.dependencies import (
     get_device_pool,
     get_job_queue,
 )
-from phone_spam_checker.logging_config import configure_logging
-from phone_spam_checker.registry import (
-    get_checker_class,
-    register_default_checkers,
-    load_checker_module,
-)
+from phone_spam_checker.registry import get_checker_class
+from phone_spam_checker.bootstrap import initialize
 
-configure_logging(level=settings.log_level, fmt=settings.log_format, log_file=settings.log_file)
-register_default_checkers()
-for mod in filter(None, getattr(settings, "checker_modules", [])):
-    load_checker_module(mod)
 logger = logging.getLogger(__name__)
 
 job_queue = get_job_queue()
@@ -74,6 +66,7 @@ async def cleanup_jobs() -> None:
 
 
 async def start_background_tasks() -> None:
+    initialize()
     asyncio.create_task(cleanup_jobs())
     services = ["kaspersky", "truecaller", "getcontact"]
     for svc in services:
