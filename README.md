@@ -51,6 +51,8 @@ POST `/check_numbers` expects JSON body:
 
 The `service` field controls which checker is used. By default (`"auto"`) the
 service will choose Kaspersky for Russian numbers and Truecaller otherwise.
+If a required ADB device is unreachable the API responds with HTTP 503 and a
+message describing the problem.
 
 ## Running locally
 

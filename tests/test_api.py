@@ -112,3 +112,41 @@ def test_background_task_completion(monkeypatch):
     assert job["status"] == "completed"
     assert job["results"][0].phone_number == "123"
 
+
+def test_device_error_response(monkeypatch):
+    def failing_ping(host, port, timeout=5):
+        raise api.DeviceConnectionError("unreachable")
+
+    monkeypatch.setattr(api, "_ping_device", failing_ping)
+
+    @api.app.get("/ping_test")
+    async def ping_test():
+        api._ping_device("1.2.3.4", "5555")
+        return {"ok": True}
+
+    client = TestClient(api.app)
+    response = client.get("/ping_test", headers={"X-API-Key": api.settings.api_key})
+    assert response.status_code == 503
+    assert "unreachable" in response.json()["detail"]
+
+
+def test_job_failed_when_device_unreachable(monkeypatch):
+    def failing_ping(host, port, timeout=5):
+        raise api.DeviceConnectionError("boom")
+
+    manager = DummyJobManager()
+    monkeypatch.setattr(api, "job_manager", manager)
+    monkeypatch.setattr(api, "_new_job", lambda: "job123")
+    monkeypatch.setattr(api, "_ping_device", failing_ping)
+
+    client = TestClient(api.app)
+    response = client.post(
+        "/check_numbers",
+        json={"numbers": ["123"], "service": "kaspersky"},
+        headers={"X-API-Key": api.settings.api_key},
+    )
+    assert response.status_code == 200
+    job = manager.get_job("job123")
+    assert job["status"] == "failed"
+    assert "boom" in job["error"]
+

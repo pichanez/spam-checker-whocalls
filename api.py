@@ -17,6 +17,7 @@ import logging
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from phone_spam_checker.job_manager import JobManager
@@ -27,6 +28,7 @@ from phone_spam_checker.config import settings
 from phone_spam_checker.registry import get_checker_class
 from phone_spam_checker.domain.models import PhoneCheckResult
 from phone_spam_checker.domain.phone_checker import PhoneChecker
+from phone_spam_checker.exceptions import DeviceConnectionError
 
 # --- API key authorization ----------------------------------------------------
 API_KEY_NAME = "X-API-Key"
@@ -73,6 +75,12 @@ app = FastAPI(
     version="2.0",
     dependencies=[Depends(get_api_key)],
 )
+
+
+@app.exception_handler(DeviceConnectionError)
+async def device_error_handler(request, exc: DeviceConnectionError):
+    logger.error("Device connection error: %s", exc)
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.middleware("http")
@@ -258,7 +266,7 @@ def _ping_device(host: str, port: str, timeout: int = 5) -> None:
             logger.debug("Device %s:%s is reachable", host, port)
     except Exception as e:
         logger.error("Device %s:%s unreachable: %s", host, port, e)
-        raise RuntimeError(f"Cannot reach device {host}:{port}: {e}") from e
+        raise DeviceConnectionError(f"Cannot reach device {host}:{port}: {e}") from e
 
 
 def _ensure_no_running() -> None:
