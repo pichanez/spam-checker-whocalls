@@ -3,6 +3,7 @@ from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import Depends
 
 import sys
 import types
@@ -19,6 +20,7 @@ os.environ.setdefault("SECRET_KEY", "secret")
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
 from phone_spam_checker.job_manager import JobRepository, JobManager
+from phone_spam_checker.exceptions import JobAlreadyRunningError, DeviceConnectionError
 
 configure_logging(
     level=settings.log_level,
@@ -71,20 +73,20 @@ class DummyJobManager(JobManager):
 
 
 def _auth_header(client: TestClient) -> dict[str, str]:
-    resp = client.post("/login", headers={"X-API-Key": api.settings.api_key})
+    resp = client.post("/login", headers={"X-API-Key": settings.api_key})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
 def test_submit_check(monkeypatch):
-    monkeypatch.setattr(api, "job_manager", JobManager(DummyRepository()))
-    monkeypatch.setattr(api, "_new_job", lambda service: "job123")
+    monkeypatch.setattr(api.jobs, "job_manager", JobManager(DummyRepository()))
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service: "job123")
     called = {}
 
     async def fake_enqueue(job_id, numbers, service):
         called["task"] = (job_id, numbers, service)
 
-    monkeypatch.setattr(api, "enqueue_job", fake_enqueue)
+    monkeypatch.setattr(api.jobs, "enqueue_job", fake_enqueue)
 
     client = TestClient(api.app)
     headers = _auth_header(client)
@@ -109,7 +111,7 @@ def test_get_status(monkeypatch):
             "created_at": datetime.utcnow(),
         }
     }
-    monkeypatch.setattr(api, "job_manager", JobManager(DummyRepository(job_data)))
+    monkeypatch.setattr(api.jobs, "job_manager", JobManager(DummyRepository(job_data)))
 
     client = TestClient(api.app)
     headers = _auth_header(client)
@@ -124,7 +126,7 @@ def test_get_status(monkeypatch):
 
 
 async def _dummy_run_check(job_id, numbers, service):
-    manager = api.job_manager
+    manager = api.jobs.job_manager
     results = [
         api.CheckResult(phone_number=n, status=api.CheckStatus.SAFE) for n in numbers
     ]
@@ -133,13 +135,13 @@ async def _dummy_run_check(job_id, numbers, service):
 
 def test_background_task_completion(monkeypatch):
     manager = JobManager(DummyRepository())
-    monkeypatch.setattr(api, "job_manager", manager)
-    monkeypatch.setattr(api, "_new_job", lambda service: "job123")
+    monkeypatch.setattr(api.jobs, "job_manager", manager)
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service: "job123")
 
     async def immediate(job_id, numbers, service):
         await _dummy_run_check(job_id, numbers, service)
 
-    monkeypatch.setattr(api, "enqueue_job", immediate)
+    monkeypatch.setattr(api.jobs, "enqueue_job", immediate)
 
     client = TestClient(api.app)
     headers = _auth_header(client)
@@ -157,13 +159,13 @@ def test_background_task_completion(monkeypatch):
 
 def test_device_error_response(monkeypatch):
     def failing_ping(host, port, timeout=5):
-        raise api.DeviceConnectionError("unreachable")
+        raise DeviceConnectionError("unreachable")
 
-    monkeypatch.setattr(api, "_ping_device", failing_ping)
+    monkeypatch.setattr(api.jobs, "_ping_device", failing_ping)
 
     @api.app.get("/ping_test")
-    async def ping_test(_: str = api.Depends(api.get_token)):
-        api._ping_device("1.2.3.4", "5555")
+    async def ping_test(_: str = Depends(api.auth.get_token)):
+        api.jobs._ping_device("1.2.3.4", "5555")
         return {"ok": True}
 
     client = TestClient(api.app)
@@ -175,20 +177,20 @@ def test_device_error_response(monkeypatch):
 
 def test_job_failed_when_device_unreachable(monkeypatch):
     def failing_ping(host, port, timeout=5):
-        raise api.DeviceConnectionError("boom")
+        raise DeviceConnectionError("boom")
 
     manager = JobManager(DummyRepository())
-    monkeypatch.setattr(api, "job_manager", manager)
-    monkeypatch.setattr(api, "_new_job", lambda service: "job123")
-    monkeypatch.setattr(api, "_ping_device", failing_ping)
+    monkeypatch.setattr(api.jobs, "job_manager", manager)
+    monkeypatch.setattr(api.jobs, "_new_job", lambda service: "job123")
+    monkeypatch.setattr(api.jobs, "_ping_device", failing_ping)
 
     async def immediate(job_id, numbers, service):
         if service == "getcontact":
-            await api._run_check_gc(job_id, numbers)
+            await api.jobs._run_check_gc(job_id, numbers)
         else:
-            await api._run_check(job_id, numbers, service)
+            await api.jobs._run_check(job_id, numbers, service)
 
-    monkeypatch.setattr(api, "enqueue_job", immediate)
+    monkeypatch.setattr(api.jobs, "enqueue_job", immediate)
 
     client = TestClient(api.app)
     headers = _auth_header(client)
@@ -205,9 +207,9 @@ def test_job_failed_when_device_unreachable(monkeypatch):
 
 def test_job_already_running(monkeypatch):
     def busy_new_job(service):
-        raise api.JobAlreadyRunningError("Previous task is still in progress")
+        raise JobAlreadyRunningError("Previous task is still in progress")
 
-    monkeypatch.setattr(api, "_new_job", busy_new_job)
+    monkeypatch.setattr(api.jobs, "_new_job", busy_new_job)
 
     client = TestClient(api.app)
     headers = _auth_header(client)
@@ -233,18 +235,18 @@ def test_invalid_phone_number():
 
 def test_multiple_jobs(monkeypatch):
     manager = JobManager(DummyRepository())
-    monkeypatch.setattr(api, "job_manager", manager)
+    monkeypatch.setattr(api.jobs, "job_manager", manager)
     ids = ["job1", "job2"]
 
     def gen_id(service):
         return ids.pop(0)
 
-    monkeypatch.setattr(api, "_new_job", gen_id)
+    monkeypatch.setattr(api.jobs, "_new_job", gen_id)
 
     async def immediate(job_id, numbers, service):
         await _dummy_run_check(job_id, numbers, service)
 
-    monkeypatch.setattr(api, "enqueue_job", immediate)
+    monkeypatch.setattr(api.jobs, "enqueue_job", immediate)
 
     client = TestClient(api.app)
     headers = _auth_header(client)
