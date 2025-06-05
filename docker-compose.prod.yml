@@ -33,6 +33,12 @@ services:
       - PG_DB=${PG_DB}
       - PG_USER=${PG_USER}
       - PG_PASSWORD=${PG_PASSWORD}
+      - USE_REDIS=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - db
+      - redis
     labels:
       caddy: telephony.visotsky.com
       caddy.reverse_proxy: "{{upstreams 8000}}"
@@ -51,8 +57,19 @@ services:
     ports:
       - "5432:5432"
 
+  redis:
+    image: redis:7
+    container_name: phone-checker-redis
+    networks: [caddy]
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+
 volumes:
   pgdata:
+  redisdata:
 
 # .env file next to this compose:
 # API_KEY=your-super-secret-key

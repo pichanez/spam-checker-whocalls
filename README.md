@@ -42,10 +42,11 @@ Values can be provided in an `.env` file which is read by `docker-compose`.
 
 When `USE_REDIS` is enabled the service stores device pools and job queues in
 Redis allowing multiple instances to work together.
+The provided `docker-compose` files run a Redis container and enable this mode by default.
 
 ## Running with Docker
 
-A simple way to start the service is via `docker-compose` which will launch the API and a Postgres instance:
+A simple way to start the service is via `docker-compose` which will launch the API along with Postgres and Redis:
 
 ```bash
 # create .env file with all required variables
