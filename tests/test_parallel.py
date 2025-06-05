@@ -39,6 +39,8 @@ async def test_parallel_checks(monkeypatch):
     monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
     monkeypatch.setattr(api.jobs, "get_job_manager", lambda: manager)
     deps._job_manager = manager
+    api.jobs.job_queue = asyncio.Queue()
+    deps._job_queue = api.jobs.job_queue
     monkeypatch.setattr(api.jobs, "get_checker_class", lambda name: DummyChecker)
     monkeypatch.setattr(api.jobs, "_ping_device", lambda *a, **kw: None)
 
@@ -66,5 +68,53 @@ async def test_parallel_checks(monkeypatch):
     assert manager.get_job(j1)["status"] == "completed"
     assert manager.get_job(j2)["status"] == "completed"
     assert len(pools["kaspersky"]) == 2
+    api.app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_worker_recovers_on_error(monkeypatch):
+    repo = SQLiteJobRepository(":memory:")
+    manager = JobManager(repo)
+    api.app.dependency_overrides[get_job_manager] = lambda: manager
+    monkeypatch.setattr(deps, "get_job_manager", lambda: manager)
+    monkeypatch.setattr(api.jobs, "get_job_manager", lambda: manager)
+    deps._job_manager = manager
+    api.jobs.job_queue = asyncio.Queue()
+    deps._job_queue = api.jobs.job_queue
+    monkeypatch.setattr(api.jobs, "get_checker_class", lambda name: DummyChecker)
+    monkeypatch.setattr(api.jobs, "_ping_device", lambda *a, **kw: None)
+
+    pools = {
+        "kaspersky": DevicePool(["dev1"]),
+        "truecaller": DevicePool([]),
+        "getcontact": DevicePool([]),
+    }
+
+    counter = {"n": 0}
+
+    def faulty_pool(service: str):
+        if counter["n"] == 0:
+            counter["n"] += 1
+            raise RuntimeError("boom")
+        return pools[service]
+
+    monkeypatch.setattr(deps, "get_device_pool", faulty_pool)
+    monkeypatch.setattr(api.jobs, "get_device_pool", faulty_pool)
+
+    j1 = api.jobs._new_job("kaspersky", manager)
+    j2 = api.jobs._new_job("kaspersky", manager)
+
+    worker = asyncio.create_task(api.jobs._worker())
+    await api.jobs.enqueue_job(j1, ["111"], "kaspersky")
+    await api.jobs.enqueue_job(j2, ["222"], "kaspersky")
+    await api.jobs.job_queue.join()
+
+    worker.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await worker
+
+    assert manager.get_job(j1)["status"] == "failed"
+    assert manager.get_job(j2)["status"] == "completed"
+    assert len(pools["kaspersky"]) == 1
     api.app.dependency_overrides.clear()
 
