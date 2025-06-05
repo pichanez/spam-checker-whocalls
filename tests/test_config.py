@@ -30,10 +30,12 @@ config = load_config()
 
 def test_settings_env(monkeypatch):
     monkeypatch.setenv("API_KEY", "abc")
+    monkeypatch.setenv("SECRET_KEY", "xyz")
     monkeypatch.setenv("KASP_ADB_HOST", "host")
     monkeypatch.setenv("KASP_ADB_PORT", "1111")
     global config
     config = load_config()
     assert config.settings.api_key == "abc"
+    assert config.settings.secret_key == "xyz"
     assert config.settings.kasp_adb_host == "host"
     assert config.settings.kasp_adb_port == "1111"
