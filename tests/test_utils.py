@@ -2,6 +2,7 @@ import sys
 import types
 import csv
 from pathlib import Path
+import pytest
 
 sys.modules.setdefault("uiautomator2", types.ModuleType("uiautomator2"))
 
@@ -26,6 +27,13 @@ def test_read_phone_list(tmp_path: Path) -> None:
     file = tmp_path / "phones.txt"
     file.write_text("+123\n456\n", encoding="utf-8")
     assert read_phone_list(file) == ["+123", "456"]
+
+
+def test_read_phone_list_invalid(tmp_path: Path) -> None:
+    file = tmp_path / "phones.txt"
+    file.write_text("12a\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_phone_list(file)
 
 
 def test_write_results(tmp_path: Path) -> None:

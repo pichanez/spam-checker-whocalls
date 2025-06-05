@@ -18,7 +18,7 @@ import logging
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from phone_spam_checker.job_manager import JobManager, SQLiteJobRepository
 from phone_spam_checker.logging_config import configure_logging
@@ -77,9 +77,17 @@ async def _worker() -> None:
 
 
 # --- data models (pydantic) ---------------------------------------------------
+from phone_spam_checker.validators import validate_phone_number
+
+
 class CheckRequest(BaseModel):
     numbers: List[str]
     service: str = "auto"  # 'auto', 'kaspersky', 'truecaller', 'getcontact'
+
+    @field_validator("numbers")
+    @classmethod
+    def validate_numbers(cls, v: List[str]) -> List[str]:
+        return [validate_phone_number(num) for num in v]
 
 
 class JobResponse(BaseModel):
