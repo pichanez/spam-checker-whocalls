@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..device_client import AndroidDeviceClient
 
-from ..domain.models import PhoneCheckResult
+from ..domain.models import PhoneCheckResult, CheckStatus
 from ..domain.phone_checker import PhoneChecker
 from ..utils import read_phone_list, write_results
 from ..logging_config import configure_logging
@@ -59,7 +59,7 @@ class GetContactChecker(PhoneChecker):
             phone = f"+{phone}"
 
         logger.info(f"Checking number: {phone}")
-        result = PhoneCheckResult(phone_number=phone, status="Unknown")
+        result = PhoneCheckResult(phone_number=phone, status=CheckStatus.UNKNOWN)
 
         try:
             inp = self.d(**LOC_INPUT_FIELD)
@@ -88,14 +88,14 @@ class GetContactChecker(PhoneChecker):
                 raise RuntimeError("Result screen did not load")
 
             if self.d(**LOC_NOT_FOUND).exists:
-                result.status = "Not in database"
+                result.status = CheckStatus.NOT_IN_DB
                 result.details = "No result found!"
             elif self.d(**LOC_SPAM_TEXT).exists:
-                result.status = "Spam"
+                result.status = CheckStatus.SPAM
                 result.details = self.d(**LOC_SPAM_TEXT).get_text()
             else:
                 name = self.d(**LOC_NAME_TEXT).get_text()
-                result.status = "Safe"
+                result.status = CheckStatus.SAFE
                 result.details = name
 
             self.d.press("back")
@@ -103,7 +103,7 @@ class GetContactChecker(PhoneChecker):
 
         except Exception as e:
             logger.error(f"Error checking {phone}: {e}")
-            result.status = "Error"
+            result.status = CheckStatus.ERROR
             result.details = str(e)
 
         logger.info(f"{phone} -> {result.status}")

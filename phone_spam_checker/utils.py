@@ -17,4 +17,8 @@ def write_results(path: Path, results: Iterable[PhoneCheckResult]) -> None:
         writer = csv.DictWriter(f, fieldnames=["phone_number", "status", "details"])
         writer.writeheader()
         for r in results:
-            writer.writerow(asdict(r))
+            row = asdict(r)
+            status = row.get("status")
+            if hasattr(status, "value"):
+                row["status"] = status.value
+            writer.writerow(row)

@@ -26,7 +26,7 @@ from phone_spam_checker.config import settings
 
 # --- checker imports ----------------------------------------------------------
 from phone_spam_checker.registry import get_checker_class
-from phone_spam_checker.domain.models import PhoneCheckResult
+from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.exceptions import DeviceConnectionError
 
@@ -77,7 +77,7 @@ class JobResponse(BaseModel):
 
 class CheckResult(BaseModel):
     phone_number: str
-    status: str
+    status: CheckStatus
     details: str = ""
 
 
@@ -194,7 +194,9 @@ async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
                 )
             else:
                 results.append(
-                    CheckResult(phone_number=num, status="Error", details="No result")
+                    CheckResult(
+                        phone_number=num, status=CheckStatus.ERROR, details="No result"
+                    )
                 )
 
     except Exception as e:
