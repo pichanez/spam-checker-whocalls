@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import jwt
 
 import pytest
 from fastapi.testclient import TestClient
@@ -306,3 +307,19 @@ def test_expired_token(monkeypatch):
     assert r.status_code == 403
     api.app.dependency_overrides.clear()
     monkeypatch.setattr(settings, "token_ttl_hours", 1)
+
+
+def test_token_contains_claims():
+    client = TestClient(api.app)
+    resp = client.post("/login", headers={"X-API-Key": settings.api_key})
+    token = resp.json()["access_token"]
+    payload = jwt.decode(
+        token,
+        settings.secret_key,
+        algorithms=["HS256"],
+        audience=settings.token_audience,
+        issuer=settings.token_issuer,
+    )
+    assert payload["aud"] == settings.token_audience
+    assert payload["iss"] == settings.token_issuer
+    assert payload["sub"] == "api"

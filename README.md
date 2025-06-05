@@ -16,6 +16,9 @@ The application loads its configuration from environment variables. The most imp
 
 - `API_KEY` – token required to access the API.
 - `SECRET_KEY` – secret key used to sign JWT tokens.
+- `SECRET_KEYS` – optional comma-separated list of additional keys accepted when verifying JWTs.
+- `TOKEN_AUDIENCE` – expected audience claim for JWT tokens.
+- `TOKEN_ISSUER` – issuer claim for JWT tokens.
 - `KASP_ADB_HOST` / `KASP_ADB_PORT` – address of the device with Kaspersky Who Calls.
 - `TC_ADB_HOST` / `TC_ADB_PORT` – address of the device with Truecaller.
 - `GC_ADB_HOST` / `GC_ADB_PORT` – address of the device with GetContact.
