@@ -1,13 +1,12 @@
 import argparse
-import csv
 import logging
-from dataclasses import asdict
 from pathlib import Path
 
 import uiautomator2 as u2
 
 from ..domain.models import PhoneCheckResult
 from ..domain.phone_checker import PhoneChecker
+from ..utils import read_phone_list, write_results
 
 APP_PACKAGE = "app.source.getcontact"
 APP_ACTIVITY = ".ui.starter.StarterActivity"
@@ -122,16 +121,7 @@ class GetContactChecker(PhoneChecker):
         return result
 
 
-def read_phone_list(path: Path) -> list[str]:
-    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
-
-def write_results(path: Path, results: list[PhoneCheckResult]) -> None:
-    with path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["phone_number", "status", "details"])
-        writer.writeheader()
-        for r in results:
-            writer.writerow(asdict(r))
 
 
 def main() -> int:

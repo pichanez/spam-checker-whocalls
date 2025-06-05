@@ -22,12 +22,9 @@ from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 
 # --- checker imports ----------------------------------------------------------
-from phone_spam_checker.infrastructure import (
-    KasperskyWhoCallsChecker,
-    TruecallerChecker,
-    GetContactChecker,
-)
+from phone_spam_checker.registry import get_checker_class
 from phone_spam_checker.domain.models import PhoneCheckResult
+from phone_spam_checker.domain.phone_checker import PhoneChecker
 
 # --- API key authorization ----------------------------------------------------
 API_KEY = os.getenv("API_KEY", "")
@@ -118,13 +115,15 @@ async def _run_check(job_id: str, numbers: List[str]) -> None:
         # -- device initialization --------------------------------------
         if kasp_nums:
             _ping_device(*kasp_device.split(":"))
-            kasp_checker = KasperskyWhoCallsChecker(kasp_device)
+            kasp_checker_cls = get_checker_class("kaspersky")
+            kasp_checker = kasp_checker_cls(kasp_device)
             if not kasp_checker.launch_app():
                 raise RuntimeError("Failed to launch Kaspersky Who Calls")
 
         if tc_nums:
             _ping_device(*tc_device.split(":"))
-            tc_checker = TruecallerChecker(tc_device)
+            tc_checker_cls = get_checker_class("truecaller")
+            tc_checker = tc_checker_cls(tc_device)
             if not tc_checker.launch_app():
                 raise RuntimeError("Failed to launch Truecaller")
 
@@ -164,13 +163,14 @@ async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
     # GetContact will add '+' itself; remove duplicates
     uniq_numbers = list(dict.fromkeys(numbers))  # preserve order
     gc_device = f"{os.getenv('GC_ADB_HOST', '127.0.0.1')}:{os.getenv('GC_ADB_PORT', '5557')}"
-    checker: Optional[GetContactChecker] = None
+    checker_cls = get_checker_class("getcontact")
+    checker: Optional[PhoneChecker] = None
     results: List[CheckResult] = []
     loop = asyncio.get_event_loop()
 
     try:
         _ping_device(*gc_device.split(":"))
-        checker = GetContactChecker(gc_device)
+        checker = checker_cls(gc_device)
         if not checker.launch_app():
             raise RuntimeError("Failed to launch GetContact")
 
