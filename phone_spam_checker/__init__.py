@@ -1,4 +1,4 @@
-from .domain.models import PhoneCheckResult
+from .domain.models import PhoneCheckResult, CheckStatus
 from .domain.phone_checker import PhoneChecker
 
 from .registry import (
@@ -18,6 +18,7 @@ from .config import settings
 
 __all__ = [
     "PhoneCheckResult",
+    "CheckStatus",
     "PhoneChecker",
     "register_checker",
     "get_checker_class",

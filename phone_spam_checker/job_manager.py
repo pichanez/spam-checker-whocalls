@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
-from .domain.models import PhoneCheckResult
+from .domain.models import PhoneCheckResult, CheckStatus
 
 
 class JobManager:
@@ -46,11 +46,15 @@ class JobManager:
         serializable = []
         for r in results:
             if is_dataclass(r):
-                serializable.append(asdict(r))
+                item = asdict(r)
             elif hasattr(r, "dict"):
-                serializable.append(r.dict())
+                item = r.dict()
             else:
-                serializable.append(dict(r))
+                item = dict(r)
+            status = item.get("status")
+            if hasattr(status, "value"):
+                item["status"] = status.value
+            serializable.append(item)
         results_json = json.dumps(serializable)
         with self._lock:
             self._db.execute(
@@ -80,7 +84,14 @@ class JobManager:
         if results_json:
             try:
                 data = json.loads(results_json)
-                results = [PhoneCheckResult(**r) for r in data]
+                for entry in data:
+                    status = entry.get("status")
+                    if isinstance(status, str):
+                        try:
+                            entry["status"] = CheckStatus(status)
+                        except Exception:
+                            pass
+                results = [PhoneCheckResult(**entry) for entry in data]
             except Exception:
                 results = None
         return {

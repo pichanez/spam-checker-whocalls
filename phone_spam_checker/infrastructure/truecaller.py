@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..device_client import AndroidDeviceClient
 
-from ..domain.models import PhoneCheckResult
+from ..domain.models import PhoneCheckResult, CheckStatus
 from ..domain.phone_checker import PhoneChecker
 from ..utils import read_phone_list, write_results
 from ..logging_config import configure_logging
@@ -52,7 +52,7 @@ class TruecallerChecker(PhoneChecker):
 
     def check_number(self, phone: str) -> PhoneCheckResult:
         logger.info(f"Checking number: {phone}")
-        result = PhoneCheckResult(phone_number=phone, status="Unknown")
+        result = PhoneCheckResult(phone_number=phone, status=CheckStatus.UNKNOWN)
 
         try:
             inp = self.d(**LOC_INPUT_FIELD)
@@ -68,16 +68,16 @@ class TruecallerChecker(PhoneChecker):
 
             if self.d(**LOC_SEARCH_WEB).exists(timeout=2):
                 logger.info("No entry in database — SEARCH THE WEB found")
-                result.status = "Not in database"
+                result.status = CheckStatus.NOT_IN_DB
             else:
                 if self.d(**LOC_SPAM_TEXT).exists(timeout=3):
-                    result.status = "Spam"
+                    result.status = CheckStatus.SPAM
                 else:
                     name_or_num = self.d(**LOC_NAME_OR_NUMBER).get_text()
                     details = ""
                     if self.d(**LOC_NUMBER_DETAILS).exists(timeout=2):
                         details = self.d(**LOC_NUMBER_DETAILS).get_text()
-                    result.status = "Safe"
+                    result.status = CheckStatus.SAFE
                     result.details = f"{name_or_num}; {details}" if details else name_or_num
 
             self.d.press("back")
@@ -87,7 +87,7 @@ class TruecallerChecker(PhoneChecker):
 
         except Exception as e:
             logger.error(f"Error checking {phone}: {e}")
-            result.status = "Error"
+            result.status = CheckStatus.ERROR
             result.details = str(e)
 
         logger.info(f"{phone} -> {result.status}")

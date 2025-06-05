@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..device_client import AndroidDeviceClient
 
-from ..domain.models import PhoneCheckResult
+from ..domain.models import PhoneCheckResult, CheckStatus
 from ..domain.phone_checker import PhoneChecker
 from ..utils import read_phone_list, write_results
 from ..logging_config import configure_logging
@@ -52,7 +52,7 @@ class KasperskyWhoCallsChecker(PhoneChecker):
 
     def check_number(self, phone: str) -> PhoneCheckResult:
         logger.info(f"Checking number: {phone}")
-        result = PhoneCheckResult(phone_number=phone, status="Unknown")
+        result = PhoneCheckResult(phone_number=phone, status=CheckStatus.UNKNOWN)
 
         try:
             inp = self.d(**LOC_INPUT_FIELD)
@@ -72,14 +72,14 @@ class KasperskyWhoCallsChecker(PhoneChecker):
                 cancel = self.d(**LOC_BTN_CANCEL)
                 if cancel.wait(timeout=3):
                     cancel.click()
-                result.status = "Not in database"
+                result.status = CheckStatus.NOT_IN_DB
             else:
                 if self.d(**LOC_SPAM_TEXT).exists(timeout=4):
-                    result.status = "Spam"
+                    result.status = CheckStatus.SPAM
                 elif self.d(**LOC_USEFUL_TEXT).exists(timeout=4):
-                    result.status = "Safe"
+                    result.status = CheckStatus.SAFE
                 else:
-                    result.status = "Unknown"
+                    result.status = CheckStatus.UNKNOWN
 
             self.d.press("back")
             if not inp.wait(timeout=5):
@@ -88,7 +88,7 @@ class KasperskyWhoCallsChecker(PhoneChecker):
 
         except Exception as e:
             logger.error(f"Error checking {phone}: {e}")
-            result.status = "Error"
+            result.status = CheckStatus.ERROR
             result.details = str(e)
 
         logger.info(f"{phone} \u2192 {result.status}")

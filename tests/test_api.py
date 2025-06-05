@@ -69,7 +69,7 @@ def test_submit_check(monkeypatch):
 
 
 def test_get_status(monkeypatch):
-    results = [api.CheckResult(phone_number="123", status="Ok", details="")]
+    results = [api.CheckResult(phone_number="123", status=api.CheckStatus.SAFE, details="")]
     job_data = {
         "job123": {
             "status": "completed",
@@ -93,7 +93,7 @@ def test_get_status(monkeypatch):
 
 async def _dummy_run_check(job_id, numbers, service):
     manager = api.job_manager
-    results = [api.CheckResult(phone_number=n, status="Ok") for n in numbers]
+    results = [api.CheckResult(phone_number=n, status=api.CheckStatus.SAFE) for n in numbers]
     manager.complete_job(job_id, results)
 
 

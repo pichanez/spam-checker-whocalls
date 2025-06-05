@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from phone_spam_checker.utils import read_phone_list, write_results  # noqa: E402
-from phone_spam_checker.domain.models import PhoneCheckResult  # noqa: E402
+from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus  # noqa: E402
 
 
 def test_read_phone_list(tmp_path: Path) -> None:
@@ -21,7 +21,7 @@ def test_read_phone_list(tmp_path: Path) -> None:
 
 def test_write_results(tmp_path: Path) -> None:
     file = tmp_path / "out.csv"
-    results = [PhoneCheckResult(phone_number="123", status="Spam", details="bad")]
+    results = [PhoneCheckResult(phone_number="123", status=CheckStatus.SPAM, details="bad")]
     write_results(file, results)
     with file.open(encoding="utf-8") as f:
         reader = list(csv.DictReader(f))
