@@ -1,13 +1,9 @@
-import argparse
 import logging
-from pathlib import Path
 
-import uiautomator2 as u2
+from ..device_client import AndroidDeviceClient
 
-from ..domain.models import PhoneCheckResult
+from ..domain.models import PhoneCheckResult, CheckStatus
 from ..domain.phone_checker import PhoneChecker
-from ..utils import read_phone_list, write_results
-from ..logging_config import configure_logging
 
 APP_PACKAGE = "app.source.getcontact"
 APP_ACTIVITY = ".ui.starter.StarterActivity"
@@ -25,27 +21,18 @@ LOC_LIMIT_DIALOG_CANCEL = {
 }
 LOC_PRIVATE_MODE = {"resourceId": "dialog.privateModeSettings.title"}
 
-configure_logging()
 logger = logging.getLogger(__name__)
 
 
 class GetContactChecker(PhoneChecker):
     def __init__(self, device: str) -> None:
         super().__init__(device)
-        logger.info(f"Connecting to device {device}")
-        self.d = u2.connect(device)
-        for fn in ("screen_on", "unlock"):
-            try:
-                getattr(self.d, fn)()
-            except Exception:
-                pass
+        self.client = AndroidDeviceClient(device)
+        self.d = self.client.d
 
     def launch_app(self) -> bool:
         logger.info("Launching GetContact")
-        try:
-            self.d.app_start(APP_PACKAGE, activity=APP_ACTIVITY)
-        except Exception as e:
-            logger.error(f"Failed to launch GetContact: {e}")
+        if not self.client.start_app(APP_PACKAGE, APP_ACTIVITY):
             return False
 
         if not self.d(**LOC_SEARCH_HINT).wait(timeout=8):
@@ -60,14 +47,14 @@ class GetContactChecker(PhoneChecker):
 
     def close_app(self) -> None:
         logger.info("Closing GetContact")
-        self.d.app_stop(APP_PACKAGE)
+        self.client.stop_app(APP_PACKAGE)
 
     def check_number(self, phone: str) -> PhoneCheckResult:
         if not phone.startswith("+"):
             phone = f"+{phone}"
 
         logger.info(f"Checking number: {phone}")
-        result = PhoneCheckResult(phone_number=phone, status="Unknown")
+        result = PhoneCheckResult(phone_number=phone, status=CheckStatus.UNKNOWN)
 
         try:
             inp = self.d(**LOC_INPUT_FIELD)
@@ -96,14 +83,14 @@ class GetContactChecker(PhoneChecker):
                 raise RuntimeError("Result screen did not load")
 
             if self.d(**LOC_NOT_FOUND).exists:
-                result.status = "Not in database"
+                result.status = CheckStatus.NOT_IN_DB
                 result.details = "No result found!"
             elif self.d(**LOC_SPAM_TEXT).exists:
-                result.status = "Spam"
+                result.status = CheckStatus.SPAM
                 result.details = self.d(**LOC_SPAM_TEXT).get_text()
             else:
                 name = self.d(**LOC_NAME_TEXT).get_text()
-                result.status = "Safe"
+                result.status = CheckStatus.SAFE
                 result.details = name
 
             self.d.press("back")
@@ -111,7 +98,7 @@ class GetContactChecker(PhoneChecker):
 
         except Exception as e:
             logger.error(f"Error checking {phone}: {e}")
-            result.status = "Error"
+            result.status = CheckStatus.ERROR
             result.details = str(e)
 
         logger.info(f"{phone} -> {result.status}")
@@ -120,51 +107,3 @@ class GetContactChecker(PhoneChecker):
 
 
 
-
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Phone number lookup via GetContact"
-    )
-    parser.add_argument(
-        "-i",
-        "--input",
-        type=Path,
-        required=True,
-        help="Input file with phone numbers",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=Path("results_getcontact.csv"),
-        help="Output CSV path",
-    )
-    parser.add_argument(
-        "-d",
-        "--device",
-        type=str,
-        default="127.0.0.1:5555",
-        help="Android device ID",
-    )
-    args = parser.parse_args()
-
-    if not args.input.exists():
-        logger.error(f"Input file not found: {args.input}")
-        return 1
-
-    phones = read_phone_list(args.input)
-    logger.info(f"Loaded {len(phones)} numbers from {args.input}")
-
-    checker = GetContactChecker(args.device)
-    if not checker.launch_app():
-        return 1
-
-    results = [checker.check_number(num) for num in phones]
-    checker.close_app()
-    write_results(args.output, results)
-    logger.info(f"Results saved to {args.output}")
-    return 0
-
-
-if __name__ == "__main__":
-    exit(main())
