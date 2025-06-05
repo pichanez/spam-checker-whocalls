@@ -9,6 +9,11 @@ def initialize() -> None:
         level=settings.log_level,
         fmt=settings.log_format,
         log_file=settings.log_file,
+        json_format=settings.log_json,
+        max_bytes=settings.log_max_bytes,
+        backup_count=settings.log_backup_count,
+        remote_host=settings.log_remote_host or None,
+        remote_port=int(settings.log_remote_port) if settings.log_remote_host else 0,
     )
     register_default_checkers()
     for mod in filter(None, getattr(settings, "checker_modules", [])):

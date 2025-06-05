@@ -109,36 +109,37 @@ async def _run_check(
 
     kasp_checker = tc_checker = None
     results: List[CheckResult] = []
-    loop = asyncio.get_event_loop()
 
     try:
         # -- device initialization
         if kasp_nums:
-            _ping_device(*kasp_device.split(":"))
+            await asyncio.to_thread(_ping_device, *kasp_device.split(":"))
             kasp_checker_cls = get_checker_class("kaspersky")
-            kasp_checker = kasp_checker_cls(kasp_device)
-            if not kasp_checker.launch_app():
+            kasp_checker = await asyncio.to_thread(kasp_checker_cls, kasp_device)
+            launched = await asyncio.to_thread(kasp_checker.launch_app)
+            if not launched:
                 raise RuntimeError("Failed to launch Kaspersky Who Calls")
 
         if tc_nums:
-            _ping_device(*tc_device.split(":"))
+            await asyncio.to_thread(_ping_device, *tc_device.split(":"))
             tc_checker_cls = get_checker_class("truecaller")
-            tc_checker = tc_checker_cls(tc_device)
-            if not tc_checker.launch_app():
+            tc_checker = await asyncio.to_thread(tc_checker_cls, tc_device)
+            launched = await asyncio.to_thread(tc_checker.launch_app)
+            if not launched:
                 raise RuntimeError("Failed to launch Truecaller")
 
         # -- parallel checking
         tasks = []
         if kasp_nums:
             tasks.append(
-                loop.run_in_executor(
-                    None, lambda: [kasp_checker.check_number(n) for n in kasp_nums]
+                asyncio.to_thread(
+                    lambda: [kasp_checker.check_number(n) for n in kasp_nums]
                 )
             )
         if tc_nums:
             tasks.append(
-                loop.run_in_executor(
-                    None, lambda: [tc_checker.check_number(n) for n in tc_nums]
+                asyncio.to_thread(
+                    lambda: [tc_checker.check_number(n) for n in tc_nums]
                 )
             )
 
@@ -170,9 +171,9 @@ async def _run_check(
         logger.info("Job %s completed in %.2fs", job_id, duration)
     finally:
         if kasp_checker:
-            await loop.run_in_executor(None, kasp_checker.close_app)
+            await asyncio.to_thread(kasp_checker.close_app)
         if tc_checker:
-            await loop.run_in_executor(None, tc_checker.close_app)
+            await asyncio.to_thread(tc_checker.close_app)
 
 
 # =============================================================================
@@ -192,17 +193,17 @@ async def _run_check_gc(
     checker_cls = get_checker_class("getcontact")
     checker: Optional[PhoneChecker] = None
     results: List[CheckResult] = []
-    loop = asyncio.get_event_loop()
 
     try:
-        _ping_device(*gc_device.split(":"))
-        checker = checker_cls(gc_device)
-        if not checker.launch_app():
+        await asyncio.to_thread(_ping_device, *gc_device.split(":"))
+        checker = await asyncio.to_thread(checker_cls, gc_device)
+        launched = await asyncio.to_thread(checker.launch_app)
+        if not launched:
             raise RuntimeError("Failed to launch GetContact")
 
         # Checking (CPU-bound -> executor)
-        raw: List[PhoneCheckResult] = await loop.run_in_executor(
-            None, lambda: [checker.check_number(n) for n in uniq_numbers]
+        raw: List[PhoneCheckResult] = await asyncio.to_thread(
+            lambda: [checker.check_number(n) for n in uniq_numbers]
         )
 
         for r in raw:
@@ -221,7 +222,7 @@ async def _run_check_gc(
         logger.info("Job %s completed in %.2fs", job_id, duration)
     finally:
         if checker:
-            await loop.run_in_executor(None, checker.close_app)
+            await asyncio.to_thread(checker.close_app)
 
 
 # Helper functions

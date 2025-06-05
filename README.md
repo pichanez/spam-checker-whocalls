@@ -32,6 +32,10 @@ The application loads its configuration from environment variables. The most imp
 - `LOG_LEVEL` – logging verbosity (e.g. `INFO`, `DEBUG`).
 - `LOG_FORMAT` – Python logging format string.
 - `LOG_FILE` – optional path to a file where logs will be written.
+- `LOG_JSON` – set to `1` for JSON log formatting.
+- `LOG_MAX_BYTES` – rotate `LOG_FILE` after this size (bytes).
+- `LOG_BACKUP_COUNT` – how many rotated log files to keep.
+- `LOG_REMOTE_HOST` / `LOG_REMOTE_PORT` – optional remote log collector.
 - `WORKER_COUNT` – how many background workers process jobs.
 - `TOKEN_TTL_HOURS` – lifetime of issued JWT tokens in hours.
 - `CHECKER_MODULES` – comma-separated list of modules with extra checkers.

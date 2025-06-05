@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     log_file: str | None = None
+    log_json: bool = False
+    log_max_bytes: int = 1048576
+    log_backup_count: int = 3
+    log_remote_host: str | None = None
+    log_remote_port: int = 0
     worker_count: int = 1
     token_ttl_hours: int = 1
     checker_modules: List[str] = []
