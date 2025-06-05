@@ -8,8 +8,6 @@ Run:
     uvicorn phone_checker_api:app --host 0.0.0.0 --port 8000
 """
 
-import os
-import uuid
 import asyncio
 import re
 import socket
@@ -17,12 +15,13 @@ from typing import List, Dict, Optional, Any
 
 import logging
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 
 from phone_spam_checker.job_manager import JobManager
 from phone_spam_checker.logging_config import configure_logging
+from phone_spam_checker.config import settings
 
 # --- checker imports ----------------------------------------------------------
 from phone_spam_checker.registry import get_checker_class
@@ -30,13 +29,12 @@ from phone_spam_checker.domain.models import PhoneCheckResult
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 
 # --- API key authorization ----------------------------------------------------
-API_KEY = os.getenv("API_KEY", "")
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 
 async def get_api_key(api_key: str = Security(api_key_header)) -> str:
-    if not API_KEY or api_key != API_KEY:
+    if not settings.api_key or api_key != settings.api_key:
         raise HTTPException(status_code=403, detail="Forbidden")
     return api_key
 
@@ -105,8 +103,8 @@ async def _run_check(job_id: str, numbers: List[str]) -> None:
     tc_nums = [n for n in numbers if n not in kasp_nums]
 
     # -- ADB device addresses --------------------------------------------
-    kasp_device = f"{os.getenv('KASP_ADB_HOST', '127.0.0.1')}:{os.getenv('KASP_ADB_PORT', '5555')}"
-    tc_device = f"{os.getenv('TC_ADB_HOST', '127.0.0.1')}:{os.getenv('TC_ADB_PORT', '5556')}"
+    kasp_device = f"{settings.kasp_adb_host}:{settings.kasp_adb_port}"
+    tc_device = f"{settings.tc_adb_host}:{settings.tc_adb_port}"
 
     kasp_checker = tc_checker = None
     results: List[CheckResult] = []
@@ -163,7 +161,7 @@ async def _run_check(job_id: str, numbers: List[str]) -> None:
 async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
     # GetContact will add '+' itself; remove duplicates
     uniq_numbers = list(dict.fromkeys(numbers))  # preserve order
-    gc_device = f"{os.getenv('GC_ADB_HOST', '127.0.0.1')}:{os.getenv('GC_ADB_PORT', '5557')}"
+    gc_device = f"{settings.gc_adb_host}:{settings.gc_adb_port}"
     checker_cls = get_checker_class("getcontact")
     checker: Optional[PhoneChecker] = None
     results: List[CheckResult] = []

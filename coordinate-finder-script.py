@@ -2,7 +2,6 @@
 """Utility for capturing a screenshot and locating UI element coordinates."""
 
 import subprocess
-import os
 import time
 import argparse
 

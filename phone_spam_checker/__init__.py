@@ -13,6 +13,7 @@ from .infrastructure import (  # noqa: F401
 )
 from .job_manager import JobManager
 from .logging_config import configure_logging
+from .config import settings
 
 __all__ = [
     "PhoneCheckResult",
@@ -25,4 +26,5 @@ __all__ = [
     "GetContactChecker",
     "JobManager",
     "configure_logging",
+    "settings",
 ]
