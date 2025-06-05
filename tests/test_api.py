@@ -436,3 +436,20 @@ def test_new_job_records_tbank():
     job_id = api.jobs._new_job("auto", manager)
     assert job_id == "job123"
     assert "tbank" in captured["devices"]
+
+
+def test_db_stores_unicode():
+    repo = SQLiteJobRepository(":memory:")
+    manager = JobManager(repo)
+
+    result = api.CheckResult(
+        phone_number="123",
+        status=api.CheckStatus.SPAM,
+        details="Русский текст"
+    )
+
+    job_id = manager.new_job([])
+    manager.complete_job(job_id, [result])
+
+    stored = repo._db.execute("SELECT results FROM jobs WHERE job_id=?", (job_id,)).fetchone()[0]
+    assert "Русский текст" in stored

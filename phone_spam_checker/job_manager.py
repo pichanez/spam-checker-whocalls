@@ -103,7 +103,7 @@ class BaseJobRepository(JobRepository, ABC):
                     if hasattr(st, "value"):
                         svc["status"] = st.value
             serializable.append(item)
-        results_json = json.dumps(serializable)
+        results_json = json.dumps(serializable, ensure_ascii=False)
         with self._lock:
             self._update_job(job_id, status="completed", results=results_json)
 
