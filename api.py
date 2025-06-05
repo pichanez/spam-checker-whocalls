@@ -28,7 +28,7 @@ from phone_spam_checker.config import settings
 from phone_spam_checker.registry import get_checker_class
 from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
 from phone_spam_checker.domain.phone_checker import PhoneChecker
-from phone_spam_checker.exceptions import DeviceConnectionError
+from phone_spam_checker.exceptions import DeviceConnectionError, JobAlreadyRunningError
 
 # --- API key authorization ----------------------------------------------------
 API_KEY_NAME = "X-API-Key"
@@ -308,7 +308,10 @@ def _ping_device(host: str, port: str, timeout: int = 5) -> None:
 
 
 def _ensure_no_running() -> None:
-    job_manager.ensure_no_running()
+    try:
+        job_manager.ensure_no_running()
+    except JobAlreadyRunningError as e:
+        raise HTTPException(status_code=429, detail=str(e)) from e
 
 
 def _new_job() -> str:
