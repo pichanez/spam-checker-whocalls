@@ -23,6 +23,7 @@ class Settings:
     job_db_path: str = "jobs.sqlite"
     log_level: str = "INFO"
     log_file: str | None = None
+    worker_count: int = 1
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -37,5 +38,8 @@ class Settings:
             job_db_path=_getenv("JOB_DB_PATH", "jobs.sqlite"),
             log_level=_getenv("LOG_LEVEL", "INFO"),
             log_file=_getenv("LOG_FILE", "") or None,
+            worker_count=int(_getenv("WORKER_COUNT", "1")),
         )
+
+
 settings = Settings.from_env()

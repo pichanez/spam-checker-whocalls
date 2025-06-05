@@ -8,6 +8,7 @@ import sys
 import types
 from pathlib import Path
 import os
+
 sys.modules.setdefault("uiautomator2", types.ModuleType("uiautomator2"))
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -52,8 +53,10 @@ def test_submit_check(monkeypatch):
     monkeypatch.setattr(api, "_new_job", lambda: "job123")
     called = {}
 
-    def fake_add_task(fn, *args):
-        called["task"] = (fn, args)
+    async def fake_enqueue(job_id, numbers, service):
+        called["task"] = (job_id, numbers, service)
+
+    monkeypatch.setattr(api, "enqueue_job", fake_enqueue)
 
     client = TestClient(api.app)
     response = client.post(
@@ -98,7 +101,11 @@ def test_background_task_completion(monkeypatch):
     manager = DummyJobManager()
     monkeypatch.setattr(api, "job_manager", manager)
     monkeypatch.setattr(api, "_new_job", lambda: "job123")
-    monkeypatch.setattr(api, "_run_check", _dummy_run_check)
+
+    async def immediate(job_id, numbers, service):
+        await _dummy_run_check(job_id, numbers, service)
+
+    monkeypatch.setattr(api, "enqueue_job", immediate)
 
     client = TestClient(api.app)
     response = client.post(
@@ -139,6 +146,14 @@ def test_job_failed_when_device_unreachable(monkeypatch):
     monkeypatch.setattr(api, "_new_job", lambda: "job123")
     monkeypatch.setattr(api, "_ping_device", failing_ping)
 
+    async def immediate(job_id, numbers, service):
+        if service == "getcontact":
+            await api._run_check_gc(job_id, numbers)
+        else:
+            await api._run_check(job_id, numbers, service)
+
+    monkeypatch.setattr(api, "enqueue_job", immediate)
+
     client = TestClient(api.app)
     response = client.post(
         "/check_numbers",
@@ -149,4 +164,3 @@ def test_job_failed_when_device_unreachable(monkeypatch):
     job = manager.get_job("job123")
     assert job["status"] == "failed"
     assert "boom" in job["error"]
-

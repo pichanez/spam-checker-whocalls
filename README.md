@@ -21,6 +21,7 @@ The application loads its configuration from environment variables. The most imp
 - `JOB_DB_PATH` – path to the SQLite file storing job statuses.
 - `LOG_LEVEL` – logging verbosity (e.g. `INFO`, `DEBUG`).
 - `LOG_FILE` – optional path to a file where logs will be written.
+- `WORKER_COUNT` – how many background workers process jobs.
 
 Values can be provided in an `.env` file which is read by `docker-compose`.
 

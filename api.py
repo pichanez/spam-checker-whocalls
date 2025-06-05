@@ -45,6 +45,25 @@ configure_logging(level=settings.log_level, log_file=settings.log_file)
 logger = logging.getLogger(__name__)
 
 job_manager = JobManager(settings.job_db_path)
+job_queue: asyncio.Queue[tuple[str, List[str], str]] = asyncio.Queue()
+
+
+async def enqueue_job(job_id: str, numbers: List[str], service: str) -> None:
+    """Place a new job into the worker queue."""
+    await job_queue.put((job_id, numbers, service))
+
+
+async def _worker() -> None:
+    while True:
+        job_id, numbers, service = await job_queue.get()
+        try:
+            if service == "getcontact":
+                await _run_check_gc(job_id, numbers)
+            else:
+                await _run_check(job_id, numbers, service)
+        finally:
+            job_queue.task_done()
+
 
 # --- data models (pydantic) ---------------------------------------------------
 class CheckRequest(BaseModel):
@@ -91,14 +110,17 @@ async def exception_middleware(request, call_next):
         logger.exception("Unhandled exception")
         raise HTTPException(status_code=500, detail="Internal server error") from exc
 
+
 # --- cleanup old jobs --------------------------------------------------------
 async def cleanup_jobs() -> None:
     await job_manager.cleanup_loop()
 
 
 @app.on_event("startup")
-async def start_cleanup_task() -> None:
+async def start_background_tasks() -> None:
     asyncio.create_task(cleanup_jobs())
+    for _ in range(settings.worker_count):
+        asyncio.create_task(_worker())
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -106,9 +128,7 @@ async def start_cleanup_task() -> None:
 # ═════════════════════════════════════════════════════════════════════════════
 async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
     numbers = [num.lstrip("+") for num in numbers]
-    logger.info(
-        "Job %s started for %d numbers via %s", job_id, len(numbers), service
-    )
+    logger.info("Job %s started for %d numbers via %s", job_id, len(numbers), service)
     start_ts = asyncio.get_event_loop().time()
 
     if service == "kaspersky":
@@ -148,9 +168,17 @@ async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
         # -- parallel checking -------------------------------------------
         tasks = []
         if kasp_nums:
-            tasks.append(loop.run_in_executor(None, lambda: [kasp_checker.check_number(n) for n in kasp_nums]))
+            tasks.append(
+                loop.run_in_executor(
+                    None, lambda: [kasp_checker.check_number(n) for n in kasp_nums]
+                )
+            )
         if tc_nums:
-            tasks.append(loop.run_in_executor(None, lambda: [tc_checker.check_number(n) for n in tc_nums]))
+            tasks.append(
+                loop.run_in_executor(
+                    None, lambda: [tc_checker.check_number(n) for n in tc_nums]
+                )
+            )
 
         grouped = await asyncio.gather(*tasks)
 
@@ -159,9 +187,15 @@ async def _run_check(job_id: str, numbers: List[str], service: str) -> None:
         for num in numbers:
             r = merged.get(num)
             if r:
-                results.append(CheckResult(phone_number=r.phone_number, status=r.status, details=r.details))
+                results.append(
+                    CheckResult(
+                        phone_number=r.phone_number, status=r.status, details=r.details
+                    )
+                )
             else:
-                results.append(CheckResult(phone_number=num, status="Error", details="No result"))
+                results.append(
+                    CheckResult(phone_number=num, status="Error", details="No result")
+                )
 
     except Exception as e:
         logger.error("Job %s failed: %s", job_id, e)
@@ -204,7 +238,9 @@ async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
 
         for r in raw:
             results.append(
-                CheckResult(phone_number=r.phone_number, status=r.status, details=r.details)
+                CheckResult(
+                    phone_number=r.phone_number, status=r.status, details=r.details
+                )
             )
 
     except Exception as e:
@@ -234,15 +270,11 @@ def submit_check(
         len(request.numbers),
         request.service,
     )
-    if request.service == "getcontact":
-        background_tasks.add_task(_run_check_gc, job_id, request.numbers)
-    elif request.service in {"auto", "kaspersky", "truecaller"}:
-        background_tasks.add_task(_run_check, job_id, request.numbers, request.service)
-    else:
+    if request.service not in {"auto", "kaspersky", "truecaller", "getcontact"}:
         raise HTTPException(status_code=400, detail="Unknown service")
+
+    background_tasks.add_task(enqueue_job, job_id, request.numbers, request.service)
     return JobResponse(job_id=job_id)
-
-
 
 
 @app.get("/status/{job_id}", response_model=StatusResponse)
