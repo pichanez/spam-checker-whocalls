@@ -3,7 +3,7 @@ import json
 import sqlite3
 import threading
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -43,7 +43,15 @@ class JobManager:
         return job_id
 
     def complete_job(self, job_id: str, results: List[PhoneCheckResult]) -> None:
-        results_json = json.dumps([asdict(r) for r in results])
+        serializable = []
+        for r in results:
+            if is_dataclass(r):
+                serializable.append(asdict(r))
+            elif hasattr(r, "dict"):
+                serializable.append(r.dict())
+            else:
+                serializable.append(dict(r))
+        results_json = json.dumps(serializable)
         with self._lock:
             self._db.execute(
                 "UPDATE jobs SET status=?, results=? WHERE job_id=?",
