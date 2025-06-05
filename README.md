@@ -15,6 +15,7 @@ Kaspersky Who Calls, Truecaller and GetContact running on connected Android devi
 The application loads its configuration from environment variables. The most important ones are:
 
 - `API_KEY` – token required to access the API.
+- `SECRET_KEY` – secret key used to sign JWT tokens.
 - `KASP_ADB_HOST` / `KASP_ADB_PORT` – address of the device with Kaspersky Who Calls.
 - `TC_ADB_HOST` / `TC_ADB_PORT` – address of the device with Truecaller.
 - `GC_ADB_HOST` / `GC_ADB_PORT` – address of the device with GetContact.
@@ -43,6 +44,22 @@ The API will be available on <http://localhost:8000>.
 
 ### API usage
 
+First obtain a JWT token using the login endpoint:
+
+```bash
+curl -X POST http://localhost:8000/login -H "X-API-Key: <your api key>"
+```
+
+Use the returned `access_token` with the `Authorization` header in further requests.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/login -H "X-API-Key: <your api key>" | jq -r .access_token)
+curl -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"numbers": ["123"], "service": "auto"}' \
+     http://localhost:8000/check_numbers
+```
+
 POST `/check_numbers` expects JSON body:
 
 ```json
@@ -64,6 +81,7 @@ Install dependencies and launch `uvicorn`:
 ```bash
 pip install -r requirements.txt
 export API_KEY=your-key
+export SECRET_KEY=your-secret
 uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 

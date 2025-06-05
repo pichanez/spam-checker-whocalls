@@ -18,6 +18,7 @@ services:
     environment:
       # Pass environment variables to the container
       - API_KEY=${API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
       - KASP_ADB_HOST=${KASP_ADB_HOST}
       - KASP_ADB_PORT=${KASP_ADB_PORT}
       - TC_ADB_HOST=${TC_ADB_HOST}

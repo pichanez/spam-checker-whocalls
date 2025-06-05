@@ -17,6 +17,9 @@ import logging
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt
+from jwt import PyJWTError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
@@ -34,15 +37,32 @@ from phone_spam_checker.domain.models import PhoneCheckResult, CheckStatus
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.exceptions import DeviceConnectionError, JobAlreadyRunningError
 
-# --- API key authorization ----------------------------------------------------
+# --- API key & token authorization -------------------------------------------
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def get_api_key(api_key: str = Security(api_key_header)) -> str:
+def _create_token() -> str:
+    return jwt.encode({"sub": "api"}, settings.secret_key, algorithm="HS256")
+
+
+async def login(api_key: str = Security(api_key_header)) -> dict:
     if not settings.api_key or api_key != settings.api_key:
         raise HTTPException(status_code=403, detail="Forbidden")
-    return api_key
+    return {"access_token": _create_token()}
+
+
+async def get_token(
+    credentials: HTTPAuthorizationCredentials = Security(bearer_scheme),
+) -> str:
+    if credentials is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        jwt.decode(credentials.credentials, settings.secret_key, algorithms=["HS256"])
+    except PyJWTError:
+        raise HTTPException(status_code=403, detail="Invalid token")
+    return credentials.credentials
 
 
 configure_logging(
@@ -111,8 +131,9 @@ class StatusResponse(BaseModel):
 app = FastAPI(
     title="Phone Checker API",
     version="2.0",
-    dependencies=[Depends(get_api_key)],
 )
+
+app.post("/login")(login)
 
 
 @app.exception_handler(DeviceConnectionError)
@@ -281,7 +302,7 @@ async def _run_check_gc(job_id: str, numbers: List[str]) -> None:
 def submit_check(
     request: CheckRequest,
     background_tasks: BackgroundTasks,
-    _: str = Depends(get_api_key),
+    _: str = Depends(get_token),
 ) -> JobResponse:
     _ensure_no_running()
     job_id = _new_job()
@@ -299,7 +320,7 @@ def submit_check(
 
 
 @app.get("/status/{job_id}", response_model=StatusResponse)
-def get_status(job_id: str, _: str = Depends(get_api_key)) -> StatusResponse:
+def get_status(job_id: str, _: str = Depends(get_token)) -> StatusResponse:
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job ID not found")

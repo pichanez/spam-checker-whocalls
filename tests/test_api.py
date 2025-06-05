@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.environ.setdefault("API_KEY", "testkey")
+os.environ.setdefault("SECRET_KEY", "secret")
 
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
@@ -69,6 +70,12 @@ class DummyJobManager(JobManager):
         pass
 
 
+def _auth_header(client: TestClient) -> dict[str, str]:
+    resp = client.post("/login", headers={"X-API-Key": api.settings.api_key})
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_submit_check(monkeypatch):
     monkeypatch.setattr(api, "job_manager", JobManager(DummyRepository()))
     monkeypatch.setattr(api, "_new_job", lambda: "job123")
@@ -80,10 +87,11 @@ def test_submit_check(monkeypatch):
     monkeypatch.setattr(api, "enqueue_job", fake_enqueue)
 
     client = TestClient(api.app)
+    headers = _auth_header(client)
     response = client.post(
         "/check_numbers",
         json={"numbers": ["123"], "service": "getcontact"},
-        headers={"X-API-Key": api.settings.api_key},
+        headers=headers,
     )
     assert response.status_code == 200
     assert response.json() == {"job_id": "job123"}
@@ -104,9 +112,10 @@ def test_get_status(monkeypatch):
     monkeypatch.setattr(api, "job_manager", JobManager(DummyRepository(job_data)))
 
     client = TestClient(api.app)
+    headers = _auth_header(client)
     response = client.get(
         "/status/job123",
-        headers={"X-API-Key": api.settings.api_key},
+        headers=headers,
     )
     assert response.status_code == 200
     body = response.json()
@@ -133,10 +142,11 @@ def test_background_task_completion(monkeypatch):
     monkeypatch.setattr(api, "enqueue_job", immediate)
 
     client = TestClient(api.app)
+    headers = _auth_header(client)
     response = client.post(
         "/check_numbers",
         json={"numbers": ["123"], "service": "kaspersky"},
-        headers={"X-API-Key": api.settings.api_key},
+        headers=headers,
     )
     assert response.status_code == 200
     assert response.json() == {"job_id": "job123"}
@@ -152,12 +162,13 @@ def test_device_error_response(monkeypatch):
     monkeypatch.setattr(api, "_ping_device", failing_ping)
 
     @api.app.get("/ping_test")
-    async def ping_test():
+    async def ping_test(_: str = api.Depends(api.get_token)):
         api._ping_device("1.2.3.4", "5555")
         return {"ok": True}
 
     client = TestClient(api.app)
-    response = client.get("/ping_test", headers={"X-API-Key": api.settings.api_key})
+    headers = _auth_header(client)
+    response = client.get("/ping_test", headers=headers)
     assert response.status_code == 503
     assert "unreachable" in response.json()["detail"]
 
@@ -180,10 +191,11 @@ def test_job_failed_when_device_unreachable(monkeypatch):
     monkeypatch.setattr(api, "enqueue_job", immediate)
 
     client = TestClient(api.app)
+    headers = _auth_header(client)
     response = client.post(
         "/check_numbers",
         json={"numbers": ["123"], "service": "kaspersky"},
-        headers={"X-API-Key": api.settings.api_key},
+        headers=headers,
     )
     assert response.status_code == 200
     job = manager.get_job("job123")
@@ -200,10 +212,11 @@ def test_job_already_running(monkeypatch):
     monkeypatch.setattr(api, "_new_job", lambda: "job123")
 
     client = TestClient(api.app)
+    headers = _auth_header(client)
     response = client.post(
         "/check_numbers",
         json={"numbers": ["123"], "service": "kaspersky"},
-        headers={"X-API-Key": api.settings.api_key},
+        headers=headers,
     )
     assert response.status_code == 429
     assert "in progress" in response.json()["detail"]
@@ -211,9 +224,10 @@ def test_job_already_running(monkeypatch):
 
 def test_invalid_phone_number():
     client = TestClient(api.app)
+    headers = _auth_header(client)
     response = client.post(
         "/check_numbers",
         json={"numbers": ["abc"], "service": "kaspersky"},
-        headers={"X-API-Key": api.settings.api_key},
+        headers=headers,
     )
     assert response.status_code == 422

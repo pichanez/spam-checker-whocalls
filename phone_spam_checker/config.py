@@ -14,6 +14,7 @@ class Settings:
     """Application configuration."""
 
     api_key: str = ""
+    secret_key: str = ""
     kasp_adb_host: str = "127.0.0.1"
     kasp_adb_port: str = "5555"
     tc_adb_host: str = "127.0.0.1"
@@ -31,6 +32,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         return cls(
             api_key=_getenv("API_KEY", ""),
+            secret_key=_getenv("SECRET_KEY", ""),
             kasp_adb_host=_getenv("KASP_ADB_HOST", "127.0.0.1"),
             kasp_adb_port=_getenv("KASP_ADB_PORT", "5555"),
             tc_adb_host=_getenv("TC_ADB_HOST", "127.0.0.1"),
