@@ -87,3 +87,28 @@ def test_get_status(monkeypatch):
     assert body["status"] == "completed"
     assert body["results"][0]["phone_number"] == "123"
 
+
+async def _dummy_run_check(job_id, numbers, service):
+    manager = api.job_manager
+    results = [api.CheckResult(phone_number=n, status="Ok") for n in numbers]
+    manager.complete_job(job_id, results)
+
+
+def test_background_task_completion(monkeypatch):
+    manager = DummyJobManager()
+    monkeypatch.setattr(api, "job_manager", manager)
+    monkeypatch.setattr(api, "_new_job", lambda: "job123")
+    monkeypatch.setattr(api, "_run_check", _dummy_run_check)
+
+    client = TestClient(api.app)
+    response = client.post(
+        "/check_numbers",
+        json={"numbers": ["123"], "service": "kaspersky"},
+        headers={"X-API-Key": api.settings.api_key},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"job_id": "job123"}
+    job = manager.get_job("job123")
+    assert job["status"] == "completed"
+    assert job["results"][0].phone_number == "123"
+
