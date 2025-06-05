@@ -1,9 +1,8 @@
 import logging
 
-from ..device_client import AndroidDeviceClient
+from .base_checker import AndroidAppChecker
 
 from ..domain.models import PhoneCheckResult, CheckStatus
-from ..domain.phone_checker import PhoneChecker
 
 APP_PACKAGE = "com.truecaller"
 APP_ACTIVITY = "com.truecaller.ui.TruecallerInit"
@@ -19,11 +18,7 @@ LOC_PHONE_NUMBER = {"resourceId": "com.truecaller:id/phoneNumber"}
 logger = logging.getLogger(__name__)
 
 
-class TruecallerChecker(PhoneChecker):
-    def __init__(self, device: str) -> None:
-        super().__init__(device)
-        self.client = AndroidDeviceClient(device)
-        self.d = self.client.d
+class TruecallerChecker(AndroidAppChecker):
 
     def launch_app(self) -> bool:
         logger.info("Launching Truecaller")

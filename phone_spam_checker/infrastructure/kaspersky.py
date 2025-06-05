@@ -1,9 +1,8 @@
 import logging
 
-from ..device_client import AndroidDeviceClient
+from .base_checker import AndroidAppChecker
 
 from ..domain.models import PhoneCheckResult, CheckStatus
-from ..domain.phone_checker import PhoneChecker
 
 APP_PACKAGE = "com.kaspersky.who_calls"
 APP_ACTIVITY = "com.kaspersky.who_calls.LauncherActivityAlias"
@@ -19,11 +18,7 @@ LOC_USEFUL_TEXT = {"textContains": "useful"}
 logger = logging.getLogger(__name__)
 
 
-class KasperskyWhoCallsChecker(PhoneChecker):
-    def __init__(self, device: str) -> None:
-        super().__init__(device)
-        self.client = AndroidDeviceClient(device)
-        self.d = self.client.d
+class KasperskyWhoCallsChecker(AndroidAppChecker):
 
     def launch_app(self) -> bool:
         logger.info("Launching application")
