@@ -42,7 +42,7 @@ async def get_api_key(api_key: str = Security(api_key_header)) -> str:
 configure_logging()
 logger = logging.getLogger(__name__)
 
-job_manager = JobManager()
+job_manager = JobManager(settings.job_db_path)
 
 # --- data models (pydantic) ---------------------------------------------------
 class CheckRequest(BaseModel):

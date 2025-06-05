@@ -17,6 +17,7 @@ The application loads its configuration from environment variables. The most imp
 - `KASP_ADB_HOST` / `KASP_ADB_PORT` – address of the device with Kaspersky Who Calls.
 - `TC_ADB_HOST` / `TC_ADB_PORT` – address of the device with Truecaller.
 - `GC_ADB_HOST` / `GC_ADB_PORT` – address of the device with GetContact.
+- `JOB_DB_PATH` – path to the SQLite file storing job statuses.
 
 Values can be provided in an `.env` file which is read by `docker-compose`.
 
