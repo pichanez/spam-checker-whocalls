@@ -100,6 +100,10 @@ Tbank web service, while Truecaller is used only for international numbers.
 If a required ADB device is unreachable the API responds with HTTP 503 and a
 message describing the problem.
 
+To query results or progress of a task, call the `/status/{job_id}` endpoint
+with the same authorization header. The response contains the job status and any
+results collected so far.
+
 ## Running locally
 
 Install dependencies and launch `uvicorn`:
@@ -111,10 +115,9 @@ export SECRET_KEY=your-secret
 uvicorn phone_spam_checker.api:app --host 0.0.0.0 --port 8000
 ```
 
-`phone_spam_checker.api` автоматически настраивает логирование и
-регистрирует встроенные чекеры при старте приложения. Если вы
-используете библиотеку в собственной точке входа, вызовите
-`phone_spam_checker.bootstrap.initialize()` перед запуском сервиса.
+`phone_spam_checker.api` automatically configures logging and registers the
+built-in checkers when imported. If you start the service from your own entry
+point, call `phone_spam_checker.bootstrap.initialize()` first.
 
 Before starting, ensure ADB can reach the devices:
 
@@ -131,10 +134,9 @@ Run checks without the API using:
 python -m scripts.phone_checker_cli SERVICE --input phones.txt --output results.csv --device 127.0.0.1:5555
 ```
 
-Replace `SERVICE` with `kaspersky`, `truecaller`, `getcontact` or `tbank`. Any additional arguments are passed to the chosen checker.
-
-В сценариях командной строки инициализация выполняется автоматически,
-поэтому достаточно запустить скрипт, как показано выше.
+Replace `SERVICE` with `kaspersky`, `truecaller`, `getcontact` or `tbank`. Any
+additional arguments are forwarded to the selected checker. Initialization is
+performed automatically in the CLI tools, so simply run the command above.
 
 
 ## Tests
