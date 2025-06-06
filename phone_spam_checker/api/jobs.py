@@ -59,10 +59,15 @@ async def _worker(app: FastAPI) -> None:
             elif service == "tbank":
                 await _run_check_tbank(job_id, numbers, job_manager)
             else:  # auto
+                needed = _devices_for_service("auto", numbers)
                 with contextlib.ExitStack() as stack:
-                    kasp_dev = stack.enter_context(pools["kaspersky"])
-                    tc_dev = stack.enter_context(pools["truecaller"])
-                    gc_dev = stack.enter_context(pools["getcontact"])
+                    kasp_dev = tc_dev = gc_dev = None
+                    if "kaspersky" in needed:
+                        kasp_dev = stack.enter_context(pools["kaspersky"])
+                    if "truecaller" in needed:
+                        tc_dev = stack.enter_context(pools["truecaller"])
+                    if "getcontact" in needed:
+                        gc_dev = stack.enter_context(pools["getcontact"])
                     await _run_check_auto(
                         job_id,
                         numbers,
