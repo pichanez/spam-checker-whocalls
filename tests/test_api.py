@@ -13,8 +13,10 @@ import os
 
 sys.modules.setdefault("uiautomator2", types.ModuleType("uiautomator2"))
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SRC = ROOT / "src"
+for path in (str(SRC), str(ROOT)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 os.environ.setdefault("API_KEY", "testkey")
 os.environ.setdefault("SECRET_KEY", "secret")
 
@@ -22,7 +24,6 @@ from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
 from phone_spam_checker.job_manager import JobRepository, JobManager, SQLiteJobRepository
 from phone_spam_checker.dependencies import get_job_manager
-import phone_spam_checker.dependencies as deps
 from phone_spam_checker.exceptions import JobAlreadyRunningError, DeviceConnectionError
 from phone_spam_checker.device_pool import DevicePool
 from phone_spam_checker.domain.phone_checker import PhoneChecker
@@ -110,9 +111,7 @@ def test_submit_check(monkeypatch):
 
 
 def test_get_status(monkeypatch):
-    results = [
-        api.CheckResult(phone_number="123", status=api.CheckStatus.SAFE, details="")
-    ]
+    results = [api.CheckResult(phone_number="123", status=api.CheckStatus.SAFE, details="")]
     job_data = {
         "job123": {
             "status": "completed",
@@ -121,6 +120,7 @@ def test_get_status(monkeypatch):
             "created_at": datetime.utcnow(),
         }
     }
+
     def override(request: Request):
         return JobManager(DummyRepository(job_data))
 
@@ -140,15 +140,14 @@ def test_get_status(monkeypatch):
 
 
 async def _dummy_run_check(job_id, numbers, service, manager):
-    results = [
-        api.CheckResult(phone_number=n, status=api.CheckStatus.SAFE) for n in numbers
-    ]
+    results = [api.CheckResult(phone_number=n, status=api.CheckStatus.SAFE) for n in numbers]
     manager.complete_job(job_id, results)
 
 
 def test_background_task_completion(monkeypatch):
     manager = JobManager(DummyRepository())
     api.app.state.job_manager = manager
+
     def override(request: Request):
         return manager
 
@@ -199,6 +198,7 @@ def test_job_failed_when_device_unreachable(monkeypatch):
 
     manager = JobManager(DummyRepository())
     api.app.state.job_manager = manager
+
     def override(request: Request):
         return manager
 
@@ -259,6 +259,7 @@ def test_invalid_phone_number():
 def test_multiple_jobs(monkeypatch):
     manager = JobManager(DummyRepository())
     api.app.state.job_manager = manager
+
     def override(request: Request):
         return manager
 
@@ -298,6 +299,7 @@ def test_multiple_jobs(monkeypatch):
 
 def test_expired_token(monkeypatch):
     monkeypatch.setattr(settings, "token_ttl_hours", -1)
+
     def override(request: Request):
         return JobManager(DummyRepository())
 
@@ -444,9 +446,7 @@ def test_db_stores_unicode():
     manager = JobManager(repo)
 
     result = api.CheckResult(
-        phone_number="123",
-        status=api.CheckStatus.SPAM,
-        details="Русский текст"
+        phone_number="123", status=api.CheckStatus.SPAM, details="Русский текст"
     )
 
     job_id = manager.new_job([])
@@ -519,3 +519,10 @@ def test_tbank_ignores_wrong_resp_encoding(monkeypatch):
     checker = TbankChecker("")
     res = checker.check_number("89100000000")
     assert res.status == api.CheckStatus.SPAM
+
+
+def test_health_endpoint():
+    client = TestClient(api.app)
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
