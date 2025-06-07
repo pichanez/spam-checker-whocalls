@@ -4,8 +4,10 @@ import sys
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SRC = ROOT / "src"
+for path in (str(SRC), str(ROOT)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings
@@ -16,7 +18,7 @@ configure_logging(
     log_file=settings.log_file,
 )
 
-CONFIG_PATH = Path(__file__).resolve().parents[1] / "phone_spam_checker" / "config.py"
+CONFIG_PATH = Path(__file__).resolve().parents[1] / "src" / "phone_spam_checker" / "config.py"
 
 
 def load_config():

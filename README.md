@@ -6,10 +6,10 @@ and the Tbank web service for Russian numbers.
 
 ## Requirements
 
-- Python 3.10 (see `.python-version` for the exact patch version)
-- ADB installed and accessible if running locally
-- Connected Android devices for each service
-- Pinned package versions listed in `requirements.txt`
+- Python 3.11 (см. `.python-version` для точной версии)
+- ADB установлен и доступен при локальном запуске
+- Подключённые Android‑устройства для каждого сервиса
+- Зависимости описаны в `pyproject.toml`
 
 ## Environment Variables
 
@@ -109,7 +109,8 @@ results collected so far.
 Install dependencies and launch `uvicorn`:
 
 ```bash
-pip install -r requirements.txt
+pip install hatch
+pip install -e .[develop]
 export API_KEY=your-key
 export SECRET_KEY=your-secret
 uvicorn phone_spam_checker.api:app --host 0.0.0.0 --port 8000

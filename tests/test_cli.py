@@ -5,8 +5,10 @@ sys.modules.setdefault("uiautomator2", types.ModuleType("uiautomator2"))
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SRC = ROOT / "src"
+for path in (str(SRC), str(ROOT)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 from phone_spam_checker.logging_config import configure_logging
 from phone_spam_checker.config import settings

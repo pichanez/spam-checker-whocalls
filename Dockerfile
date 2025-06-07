@@ -1,5 +1,5 @@
-# Use slim Python 3.10 image
-FROM python:3.10-slim
+# Use slim Python 3.11 image
+FROM python:3.11-slim
 
 # Install ADB for Android interaction
 RUN apt-get update \
@@ -9,12 +9,11 @@ RUN apt-get update \
 # Working directory
 WORKDIR /app
 
-# Copy and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
 # Copy project code
 COPY . .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir hatchling && pip install --no-cache-dir .
 
 # Create entrypoint script inside container without CRLF
 RUN printf '#!/bin/sh\n' > /entrypoint.sh \
