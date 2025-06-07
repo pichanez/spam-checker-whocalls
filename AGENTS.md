@@ -83,93 +83,41 @@ coverage xml && coverage html
 
 ## 🔄 Git & Branching
 
-* Default branch: `main`
-* Feature branches: `feat/<scope>-<short_description>`
-* Hotfix branches: `fix/<issue>`
+* **Primary branch:** `main`
+* **Automated agents:** MUST create a **new branch** for every logical change set and open a Pull Request – they **MUST NOT** push directly to `main`.
+* **Branch names:** English‑only, lower‑case, words separated by hyphens. Use a clear prefix:
 
-**Commit message convention** (adapted from Conventional Commits):
+  * Automated agents → `agent/<short-description>`
+  * Feature branches  → `feat/<short-description>`
+  * Hotfix branches   → `fix/<issue-or-description>`
+  * Example: `agent/update-readme-links`, `feat/api-add-user-endpoint`.
+* **Human contributors:** Follow the same naming conventions when creating feature/hotfix branches.
+
+---
+
+## 📝 Commit Message Convention
+
+All commits **must clearly describe the changes**. Use the extended Conventional Commits format below:
 
 ```text
 <type>(<scope>): <subject>
 
-<body>  # optional
+WHAT CHANGED:
+- • … (concise bullet‑list of key modifications; e.g. "refactor auth helper to async")
+- • …
+
+WHY:
+- • … (reason or motivation)
+
+BREAKING CHANGES:
+- • … (if applicable)
+
+ISSUES:
+- • #123, PROJ‑456 (references)
 ```
 
-Allowed `<type>`: `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `chore`, `ci`.
-
----
-
-## 🚦 Pull Request Checklist
-
-1. CI green (`black`, `ruff`, `mypy`, `pytest`).
-2. PR <= **400** changed LOC (excluding generated files).
-3. Linked issue or clear rationale.
-4. Changelog entry added in `CHANGELOG.md`.
-5. No secrets, credentials, or personal data committed.
-
----
-
-## 🛡️ Security & Secrets
-
-* **Never** hard‑code secrets. Use environment variables or a secrets manager (e.g. HashiCorp Vault).
-* External calls must validate TLS certificates.
-* Dependencies are scanned with [`pip-audit`](https://github.com/pypa/pip-audit) in CI.
-
----
-
-## 🤖 Agent‑Specific Rules
-
-1. For every file you modify, obey all `AGENTS.md` files whose scope includes that file.
-2. If multiple `AGENTS.md` files conflict, **the deepest one wins**.
-3. You **must** run all programmatic checks below before finalising a patch—even for documentation changes.
-4. Direct user/developer/system instructions override this file.
-
----
-
-## ✅ Programmatic Checks (CI)
-
-```bash
-# format & lint
-black .
-ruff check .
-# type checking
-mypy .
-# tests & coverage
-pytest --cov=src --cov-report=xml --cov-report=term
-pip-audit
-```
-
----
-
-## 📄 Example Good PR Description
-
-```
-feat(core): add async file downloader
-
-### What & Why
-- Introduces `core.download.AsyncDownloader` with retries and back‑off.
-- Replaces synchronous code that blocked the event loop (#42).
-
-### Changes
-- src/package_name/core/download.py (+120 LOC)
-- tests/core/test_download.py (+220 LOC)
-
-### Validation
-- `pytest` → 125 tests passed
-- Coverage 92 %
-- `mypy` passes
-```
-
----
-
-## 🙋 Support & Maintainers
-
-| Role             | GitHub                                              | Responsibility        |
-| ---------------- | --------------------------------------------------- | --------------------- |
-| Lead Maintainer  | @maintainer‑handle                                  | Code review, releases |
-| Security Contact | [security@example.com](mailto:security@example.com) | Vulnerability reports |
-
----
-
-> **Remember:** Follow these guidelines unless explicitly instructed otherwise by the project maintainers or an upstream `AGENTS.md`.
-> These instructions take precedence over any tool default configurations.
+* **Subject line** ≤ 72 chars, lower‑case imperative mood.
+* **Body** is **mandatory** except for trivial typo/doc fixes.
+* The **WHAT CHANGED** section **must** list the most important modifications in plain English so a reviewer can grasp them without opening the diff.
+* If the commit introduces a **breaking change**, include a dedicated **BREAKING CHANGES** block.
+* Every commit should compile, pass tests, and keep CI green.
