@@ -9,23 +9,61 @@ services:
     env_file:
       - .env
     ports:
-      # FastAPI HTTP API доступен извне
+      # FastAPI HTTP API exposed
       - "8000:8000"
     volumes:
-      # Монтируем каталог проекта внутрь контейнера для разработки
+      # Mount project directory inside container for development
       - ./:/app:delegated
     restart: unless-stopped
     environment:
-      # Передваем переменные окружения в контейнер
+      # Pass environment variables to the container
       - API_KEY=${API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
       - KASP_ADB_HOST=${KASP_ADB_HOST}
       - KASP_ADB_PORT=${KASP_ADB_PORT}
       - TC_ADB_HOST=${TC_ADB_HOST}
       - TC_ADB_PORT=${TC_ADB_PORT}
       - GC_ADB_HOST=${GC_ADB_HOST}
       - GC_ADB_PORT=${GC_ADB_PORT}
+      - PG_HOST=${PG_HOST}
+      - PG_PORT=${PG_PORT}
+      - PG_DB=${PG_DB}
+      - PG_USER=${PG_USER}
+      - PG_PASSWORD=${PG_PASSWORD}
+      - USE_REDIS=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - db
+      - redis
 
-# Файл .env рядом с этим compose:
+  db:
+    image: postgres:16
+    container_name: phone-checker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PG_DB}
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    container_name: phone-checker-redis
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
+  redisdata:
+
+# .env file next to this compose:
 # API_KEY=your-super-secret-key
 # ADB_HOST=127.0.0.1
 # ADB_PORT=5555
