@@ -15,19 +15,20 @@ from .schemas import CheckResult, ServiceResult
 from phone_spam_checker.domain.phone_checker import PhoneChecker
 from phone_spam_checker.exceptions import DeviceConnectionError, JobAlreadyRunningError
 from phone_spam_checker.job_manager import JobManager
-from phone_spam_checker.dependencies import get_job_manager
 from phone_spam_checker.registry import get_checker_class
 from phone_spam_checker.bootstrap import initialize
 
 logger = logging.getLogger(__name__)
 
 
-async def _check_parallel(
+async def _check_all(
     checker: PhoneChecker, numbers: List[str]
 ) -> List[PhoneCheckResult]:
-    """Run checks for all numbers concurrently."""
-    tasks = [asyncio.to_thread(checker.check_number, n) for n in numbers]
-    return await asyncio.gather(*tasks)
+    """Sequentially check all numbers on one device."""
+    results: List[PhoneCheckResult] = []
+    for num in numbers:
+        results.append(await asyncio.to_thread(checker.check_number, num))
+    return results
 
 
 async def enqueue_job(
@@ -164,9 +165,9 @@ async def _run_check(
         # -- parallel checking
         tasks = []
         if kasp_nums:
-            tasks.append(_check_parallel(kasp_checker, kasp_nums))
+            tasks.append(_check_all(kasp_checker, kasp_nums))
         if tc_nums:
-            tasks.append(_check_parallel(tc_checker, tc_nums))
+            tasks.append(_check_all(tc_checker, tc_nums))
 
         grouped = await asyncio.gather(*tasks)
 
@@ -243,7 +244,7 @@ async def _run_check_gc(
             raise RuntimeError("Failed to launch GetContact")
 
         # Checking (CPU-bound -> executor)
-        raw: List[PhoneCheckResult] = await _check_parallel(checker, uniq_numbers)
+        raw: List[PhoneCheckResult] = await _check_all(checker, uniq_numbers)
 
         for r in raw:
             results.append(
@@ -291,7 +292,7 @@ async def _run_check_tbank(
         if not launched:
             raise RuntimeError("Failed to init Tbank checker")
 
-        raw: List[PhoneCheckResult] = await _check_parallel(checker, numbers)
+        raw: List[PhoneCheckResult] = await _check_all(checker, numbers)
 
         for r in raw:
             results.append(
@@ -364,7 +365,7 @@ async def _run_check_auto(
             launched = await asyncio.to_thread(kasp_checker.launch_app)
             if not launched:
                 raise RuntimeError("Failed to launch Kaspersky Who Calls")
-            raw = await _check_parallel(kasp_checker, kasp_nums)
+            raw = await _check_all(kasp_checker, kasp_nums)
             for orig, r in zip(ru_nums_orig, raw):
                 res[orig] = r
             return res
@@ -380,7 +381,7 @@ async def _run_check_auto(
             launched = await asyncio.to_thread(gc_checker.launch_app)
             if not launched:
                 raise RuntimeError("Failed to launch GetContact")
-            raw = await _check_parallel(gc_checker, gc_nums)
+            raw = await _check_all(gc_checker, gc_nums)
             for orig, r in zip(gc_nums, raw):
                 res[orig] = r
             return res
@@ -392,7 +393,7 @@ async def _run_check_auto(
             launched = await asyncio.to_thread(tb_checker.launch_app)
             if not launched:
                 raise RuntimeError("Failed to init Tbank checker")
-            raw = await _check_parallel(tb_checker, tb_nums)
+            raw = await _check_all(tb_checker, tb_nums)
             for orig, r in zip(ru_nums_orig, raw):
                 res[orig] = r
             return res
@@ -408,7 +409,7 @@ async def _run_check_auto(
             launched = await asyncio.to_thread(tc_checker.launch_app)
             if not launched:
                 raise RuntimeError("Failed to launch Truecaller")
-            raw = await _check_parallel(tc_checker, tc_nums)
+            raw = await _check_all(tc_checker, tc_nums)
             for orig, r in zip(intl_nums_orig, raw):
                 res[orig] = r
             return res
