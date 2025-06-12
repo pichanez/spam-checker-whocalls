@@ -30,12 +30,12 @@ class GetContactChecker(AndroidAppChecker):
         if not self.client.start_app(APP_PACKAGE, APP_ACTIVITY):
             return False
 
-        if not self.d(**LOC_SEARCH_HINT).wait(timeout=8):
+        if not self.d(**LOC_SEARCH_HINT).wait(timeout=2):
             logger.error("Search hint did not appear")
             return False
 
         self.d(**LOC_SEARCH_HINT).click()
-        if not self.d(**LOC_INPUT_FIELD).wait(timeout=3):
+        if not self.d(**LOC_INPUT_FIELD).wait(timeout=2):
             logger.error("Input field did not appear after clicking search hint")
             return False
         return True
@@ -53,7 +53,7 @@ class GetContactChecker(AndroidAppChecker):
 
         try:
             inp = self.d(**LOC_INPUT_FIELD)
-            if not inp.wait(timeout=5):
+            if not inp.wait(timeout=2):
                 raise RuntimeError("Input field not available")
 
             inp.click()
@@ -70,7 +70,7 @@ class GetContactChecker(AndroidAppChecker):
                 self.d.press("back")
 
             cond_found = (
-                self.d(**LOC_NOT_FOUND).wait(timeout=8)
+                self.d(**LOC_NOT_FOUND).wait(timeout=2)
                 or self.d(**LOC_NAME_TEXT).exists
                 or self.d(**LOC_SPAM_TEXT).exists
             )
@@ -89,7 +89,7 @@ class GetContactChecker(AndroidAppChecker):
                 result.details = name
 
             self.d.press("back")
-            inp.wait(timeout=3)
+            inp.wait(timeout=1)
 
         except Exception as e:
             logger.error(f"Error checking {phone}: {e}")
